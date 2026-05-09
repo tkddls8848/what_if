@@ -303,9 +303,37 @@ button.primary {
   stroke-width: 2;
 }
 
+.graph-node.fictional {
+  fill: #f5e9c8;
+  stroke: #c9a44c;
+  stroke-width: 2;
+}
+
+.graph-node.real {
+  fill: #dde6f5;
+  stroke: var(--accent-3);
+  stroke-width: 2;
+}
+
 .graph-node.current {
-  fill: var(--soft-green);
   stroke-width: 4;
+  filter: drop-shadow(0 0 6px rgba(14, 107, 99, 0.55));
+}
+
+.graph-node.fictional.current {
+  fill: #f0d98a;
+}
+
+.graph-node.real.current {
+  fill: #b8c8e8;
+}
+
+.graph-node-group {
+  cursor: pointer;
+}
+
+.graph-node-group:hover .graph-node {
+  stroke-width: 3.5;
 }
 
 .graph-label {
@@ -406,15 +434,87 @@ button.primary {
   font-size: 17px;
 }
 
+.character-card .card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.character-card h3 small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.char-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.char-section:first-of-type {
+  border-top: 0;
+}
+
+.char-section h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.char-section h4 small {
+  margin-left: 4px;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.char-section p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tag.added {
+  background: var(--soft-red);
+  border: 1px solid var(--accent-2);
+}
+
+.change-history {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.change-history li.current-change {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.change-history li.muted {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .fact-list {
   display: grid;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 6px;
   padding-left: 18px;
 }
 
 .fact-list li {
   line-height: 1.45;
+  font-size: 13px;
 }
 
 .review-layout {

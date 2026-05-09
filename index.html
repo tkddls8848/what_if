@@ -56,10 +56,10 @@
             <div class="panel-grid map-grid">
               <div class="graph-panel">
                 <div class="pane-header compact">
-                  <h2>공간 그래프</h2>
+                  <h2>소설 지도</h2>
                   <span id="mapStats">0 노드</span>
                 </div>
-                <svg id="spaceGraph" viewBox="0 0 900 560" role="img" aria-label="공간 그래프"></svg>
+                <svg id="spaceGraph" viewBox="0 0 900 560" role="img" aria-label="소설 지도"></svg>
               </div>
               <aside class="evidence-panel">
                 <div class="pane-header compact">
@@ -81,6 +81,8 @@
                 <option value="perception">인식</option>
                 <option value="conflict">갈등</option>
                 <option value="realization">깨달음</option>
+                <option value="stasis">정체</option>
+                <option value="symbolic">상징</option>
               </select>
             </div>
             <div id="timelineList" class="timeline-list"></div>
@@ -126,6 +128,6 @@
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

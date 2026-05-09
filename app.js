@@ -1,37 +1,173 @@
 "use strict";
 
-const sampleText = `나는 좁은 방에서 오래 누워 있었다. 문 밖에서는 아내의 발소리가 들렸고, 나는 그것이 나를 지키는 소리인지 멀어지는 소리인지 알 수 없었다.
-
-아내는 낮마다 안쪽 방에 머물렀다. 나는 벽 하나를 사이에 두고 그녀의 기침과 서랍 여닫는 소리를 들었다. 방은 둘로 나뉘었지만 냄새와 침묵은 섞여 있었다.
-
-어느 저녁, 박제가 찾아와 낮은 목소리로 아내와 이야기했다. 나는 그들의 말을 다 듣지 못했다. 다만 내 이름이 잠깐 불렸고, 곧 방문이 닫혔다.
-
-다음 날 나는 거리에 나갔다. 햇빛은 너무 밝았고 사람들은 나를 알아보지 못했다. 나는 백화점 쪽으로 걸었지만, 그곳이 목적지인지 도피처인지 분명하지 않았다.
-
-나는 다시 방으로 돌아왔다. 아내는 말없이 나를 바라보았다. 그 시선 때문에 나는 내가 떠난 적이 없었던 사람처럼 느껴졌다.
-
-마지막으로 나는 옥상 같은 높은 곳을 떠올렸다. 날개가 있다면 다시 한번 날아 보겠다고 생각했다. 그 생각은 사실인지 상징인지 내게도 확실하지 않았다.`;
+const SAMPLE_TEXT_URL = "texts/wings.txt";
+const MAP_TIMELINE_WINDOW = 10;
+const sampleText = await loadInitialSampleText();
 
 const knownCharacters = [
-  { canonical: "나", aliases: ["나", "나는", "내", "내가", "나를", "나의"], role: "화자" },
-  { canonical: "아내", aliases: ["아내", "그녀"], role: "배우자" },
-  { canonical: "박제", aliases: ["박제"], role: "방문자" },
-  { canonical: "사람들", aliases: ["사람들", "군중"], role: "주변 인물" }
+  {
+    canonical: "나",
+    aliases: ["나", "나는", "내", "내가", "나를", "나의", "내게", "나도"],
+    role: "화자",
+    appearance_text: "야위고 창백한 26세 남성, 빛이 검은 골덴 양복과 하이넥 스웨터",
+    appearance_traits: ["창백", "야윔", "검은 의복", "수염 자람"],
+    personality_traits: ["무기력", "사색적", "자의식 강함", "의존적", "관찰자적"],
+    initial_mental_state: "정체"
+  },
+  {
+    canonical: "아내",
+    aliases: ["아내", "아내가", "아내는", "아내의", "아내에게", "아내도", "그녀"],
+    role: "배우자",
+    real_name: "연심",
+    appearance_text: "33번지에서 가장 작고 아름다운 여인, 화려한 치마저고리와 진솔 버선",
+    appearance_traits: ["작고 아름다움", "화려한 옷차림", "화장대 소유"],
+    personality_traits: ["통제적", "신비", "정중함", "내객 응대"],
+    initial_mental_state: "거리 유지"
+  },
+  {
+    canonical: "내객",
+    aliases: ["내객", "내객들", "손님"],
+    role: "방문자",
+    appearance_text: "익명의 서너 사람, 자정 즈음에 돌아감",
+    appearance_traits: [],
+    personality_traits: ["익명", "교양 편차"],
+    initial_mental_state: "방문"
+  },
+  {
+    canonical: "낯선 남자",
+    aliases: ["낯선 남자", "그 남자", "낯설은 남자"],
+    role: "특정 남자",
+    appearance_text: "결말부 아내와 함께 나타나는 특정 남자",
+    appearance_traits: [],
+    personality_traits: ["수수께끼"],
+    initial_mental_state: "외부"
+  },
+  {
+    canonical: "18가구 사람들",
+    aliases: ["18가구", "18 가구", "송이송이 꽃", "젊은 여인"],
+    role: "주변 인물",
+    appearance_text: "33번지에 사는 송이송이 꽃과 같이 젊은 여인들",
+    appearance_traits: ["젊음"],
+    personality_traits: ["익명 군중"],
+    initial_mental_state: "배경"
+  }
 ];
 
 const locationSeeds = [
-  { canonical: "방", aliases: ["방", "좁은 방", "안쪽 방", "방문"], type: "interior" },
-  { canonical: "거리", aliases: ["거리", "길", "문 밖"], type: "exterior" },
-  { canonical: "백화점", aliases: ["백화점"], type: "public" },
-  { canonical: "옥상", aliases: ["옥상", "높은 곳"], type: "symbolic" }
+  {
+    canonical: "33번지",
+    aliases: ["33번지", "이 33번지"],
+    type: "residential",
+    is_fictional: false,
+    real_world_candidate: "1930년대 경성 사창가 구조 추정",
+    narrative_coords: { x: 450, y: 300 },
+    symbolic_meaning: "유곽 같은 구조의 18가구 거주 공간"
+  },
+  {
+    canonical: "내 방",
+    aliases: ["내 방", "윗방", "이 방", "일곱째 칸"],
+    type: "interior",
+    is_fictional: true,
+    parent: "33번지",
+    narrative_coords: { x: 280, y: 360 },
+    symbolic_meaning: "해 안 드는 화자의 고립과 폐쇄"
+  },
+  {
+    canonical: "아내 방",
+    aliases: ["아내 방", "아내의 방", "아랫방"],
+    type: "interior",
+    is_fictional: true,
+    parent: "33번지",
+    narrative_coords: { x: 450, y: 360 },
+    symbolic_meaning: "햇볕 드는 화려한 공간, 화장대와 향기"
+  },
+  {
+    canonical: "변소",
+    aliases: ["변소"],
+    type: "interior",
+    is_fictional: true,
+    parent: "33번지",
+    narrative_coords: { x: 580, y: 410 },
+    symbolic_meaning: "벙어리(저금통)를 버린 작은 반항의 공간"
+  },
+  {
+    canonical: "거리",
+    aliases: ["거리", "한길", "길가", "이 거리", "저 거리"],
+    type: "exterior",
+    is_fictional: false,
+    real_world_candidate: "1930년대 경성 도심 거리",
+    narrative_coords: { x: 450, y: 470 },
+    symbolic_meaning: "외부 세계, 자유와 피로의 공존"
+  },
+  {
+    canonical: "경성역",
+    aliases: ["경성역", "경성역 시계", "일 이등 대합실", "티이루움"],
+    type: "public",
+    is_fictional: false,
+    real_world_candidate: "경성역 (현 서울역)",
+    real_coords: { lat: 37.5550, lng: 126.9707 },
+    geocode_source: "manual",
+    narrative_coords: { x: 720, y: 470 },
+    symbolic_meaning: "정확한 시계, 자정의 통제, 익명성"
+  },
+  {
+    canonical: "산",
+    aliases: ["산"],
+    type: "symbolic",
+    is_fictional: true,
+    narrative_coords: { x: 180, y: 200 },
+    symbolic_meaning: "아달린 발견 후 도피처, 자기 파괴와 회복"
+  },
+  {
+    canonical: "미쓰꼬시 옥상",
+    aliases: ["미쓰꼬시", "미쓰꼬시 옥상", "옥상"],
+    type: "symbolic",
+    is_fictional: false,
+    real_world_candidate: "미쓰코시 백화점 경성지점 (현 신세계백화점 본점)",
+    real_coords: { lat: 37.5605, lng: 126.9819 },
+    geocode_source: "manual",
+    narrative_coords: { x: 720, y: 130 },
+    symbolic_meaning: "근대 소비문화의 정점에서의 비상 욕망"
+  }
 ];
 
 const eventLexicon = [
-  { type: "movement", words: ["갔다", "나갔다", "걸었", "돌아왔", "떠났", "향했", "이동", "들어갔", "나왔"] },
-  { type: "conversation", words: ["말", "이야기", "목소리", "불렸", "물었", "대답"] },
-  { type: "perception", words: ["보았", "들었", "느꼈", "알 수", "생각", "바라보", "떠올"] },
-  { type: "conflict", words: ["지키", "닫혔", "두려", "불안", "갈등", "멀어지"] },
-  { type: "realization", words: ["깨달", "분명", "확실", "느껴졌", "알았다"] }
+  { type: "movement", words: ["갔다", "나갔다", "걸었", "돌아왔", "떠났", "향했", "들어갔", "나왔", "올라갔", "내려갔", "외출", "찾아갔", "쏘다녔", "헤매었", "방황", "건너갔"] },
+  { type: "conversation", words: ["말", "이야기", "목소리", "불렸", "물었", "대답", "웃는", "소곤", "속삭"] },
+  { type: "perception", words: ["보았", "들었", "느꼈", "알 수", "생각", "바라보", "떠올", "내려다보", "들여다보", "바라보았", "회고"] },
+  { type: "conflict", words: ["걸려", "닫혔", "불안", "갈등", "멀어지", "거슬", "이상하게", "노기", "발악", "꾸지람", "감금"] },
+  { type: "realization", words: ["깨달", "알게 되었", "알 수 없었", "느껴졌", "알았다", "알게", "발견"] },
+  { type: "stasis", words: ["잔다", "잠들었", "누웠", "누워", "멍하니", "천장", "뒹굴", "의식을 잃", "졸려"] },
+  { type: "symbolic", words: ["날개", "날자", "날아", "박제", "은화", "백지", "자유", "벙어리", "사이렌", "겨드랑이", "금붕어", "아달린"] }
+];
+
+// 「날개」 인물 동적 변화 규칙: 키워드 매칭 시 trait 변경
+// segment.text에 모든 match 키워드가 포함된 첫 segment에서 변화 발생
+const traitChangeRules = [
+  {
+    character_canonical: "나",
+    triggers: [
+      { match: ["깨달았다", "내객들"], change: { trait_key: "mental_state", value: "호기심" } },
+      { match: ["벙어리를 변소"], change: { trait_key: "add_trait", value: "반항" } },
+      { match: ["밖으로 나왔다", "은화를 지폐"], change: { trait_key: "mental_state", value: "외부 지향" } },
+      { match: ["오 원", "쥐어 준"], change: { trait_key: "mental_state", value: "쾌감 발견" } },
+      { match: ["아내 방", "맨 처음"], change: { trait_key: "add_trait", value: "관계 변화" } },
+      { match: ["아달린", "발견"], change: { trait_key: "mental_state", value: "충격" } },
+      { match: ["산을 찾아 올라"], change: { trait_key: "add_trait", value: "도피" } },
+      { match: ["미쓰꼬시 옥상"], change: { trait_key: "mental_state", value: "절망" } },
+      { match: ["겨드랑이", "날개"], change: { trait_key: "mental_state", value: "비상 욕망" } },
+      { match: ["날개야", "다시 돋아"], change: { trait_key: "add_trait", value: "각성" } }
+    ]
+  },
+  {
+    character_canonical: "아내",
+    triggers: [
+      { match: ["노기", "바르르"], change: { trait_key: "stance_to_narrator", value: "노기" } },
+      { match: ["미소", "팔을 이끄"], change: { trait_key: "stance_to_narrator", value: "호의" } },
+      { match: ["아달린", "한 달"], change: { trait_key: "add_trait", value: "음모" } },
+      { match: ["발악", "도둑질"], change: { trait_key: "stance_to_narrator", value: "발악" } }
+    ]
+  }
 ];
 
 const state = {
@@ -149,7 +285,9 @@ function analyzeText(rawText) {
 
   const characters = extractCharacters(segments);
   const locations = extractLocations(segments);
+  linkLocationParents(locations);
   const events = extractEvents(segments, characters, locations);
+  applyTraitChangeRules(characters, segments, events);
   const states = buildCharacterStates(segments, characters, locations, events);
   const edges = buildEdges(events, locations);
 
@@ -198,6 +336,20 @@ function extractCharacters(segments) {
       description: `${seed.role}로 추정됨`,
       first_appearance_segment_id: hits[0].segment_id,
       role: seed.role,
+      real_name: seed.real_name || "",
+      appearance: {
+        text: seed.appearance_text || "",
+        traits: [...(seed.appearance_traits || [])],
+        evidence_segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
+        last_updated_by_event: null
+      },
+      personality: {
+        traits: [...(seed.personality_traits || [])],
+        evidence_segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
+        last_updated_by_event: null
+      },
+      initial_mental_state: seed.initial_mental_state || "미정",
+      dynamic_traits: [],
       confidence: confidenceFromHits(hits.length, segments.length),
       evidence_segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id),
       evidence: hits.slice(0, 3).map((segment) => firstSentence(segment.text))
@@ -248,9 +400,16 @@ function extractLocations(segments) {
       canonical_name: seed.canonical,
       aliases: seed.aliases,
       type: seed.type,
-      description: `${seed.type} 공간으로 추정됨`,
-      real_world_candidate: "",
+      description: seed.symbolic_meaning || `${seed.type} 공간`,
+      is_fictional: seed.is_fictional ?? true,
+      real_world_candidate: seed.real_world_candidate || "",
+      real_coords: seed.real_coords || null,
+      geocode_source: seed.geocode_source || null,
+      narrative_coords: seed.narrative_coords || null,
+      symbolic_meaning: seed.symbolic_meaning || "",
       parent_location_id: "",
+      parent_canonical: seed.parent || "",
+      first_appearance_segment_id: hits[0].segment_id,
       confidence: confidenceFromHits(hits.length, segments.length),
       evidence_segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id),
       evidence: hits.slice(0, 3).map((segment) => firstSentence(segment.text))
@@ -355,6 +514,79 @@ function buildCharacterStates(segments, characters, locations, events) {
   });
 
   return states;
+}
+
+function linkLocationParents(locations) {
+  locations.forEach((loc) => {
+    if (loc.parent_canonical) {
+      const parent = locations.find((p) => p.canonical_name === loc.parent_canonical);
+      loc.parent_location_id = parent ? parent.location_id : "";
+    }
+  });
+}
+
+function applyTraitChangeRules(characters, segments) {
+  characters.forEach((character) => {
+    character.dynamic_traits = [];
+    const ruleSet = traitChangeRules.find(
+      (r) => r.character_canonical === character.canonical_name
+    );
+    if (!ruleSet) return;
+
+    let currentMentalState = character.initial_mental_state || "미정";
+
+    ruleSet.triggers.forEach((rule) => {
+      const matchedSegment = segments.find((seg) =>
+        rule.match.every((kw) => seg.text.includes(kw))
+      );
+      if (!matchedSegment) return;
+
+      const trait_key = rule.change.trait_key;
+      const value = rule.change.value;
+      const previous_value = trait_key === "mental_state" ? currentMentalState : "";
+
+      character.dynamic_traits.push({
+        trait_key,
+        value,
+        previous_value,
+        segment_id: matchedSegment.segment_id,
+        changed_by_event_id: ""
+      });
+
+      if (trait_key === "mental_state") {
+        currentMentalState = value;
+      }
+    });
+
+    character.dynamic_traits.sort(
+      (a, b) => segmentOrderById(a.segment_id) - segmentOrderById(b.segment_id)
+    );
+  });
+}
+
+function characterStateAt(character, segmentOrder) {
+  const applied = (character.dynamic_traits || []).filter(
+    (dt) => segmentOrderById(dt.segment_id) <= segmentOrder
+  );
+
+  let mentalState = character.initial_mental_state || "미정";
+  let stance = "";
+  const traits = [...((character.personality && character.personality.traits) || [])];
+
+  applied.forEach((dt) => {
+    if (dt.trait_key === "mental_state") {
+      mentalState = dt.value;
+    } else if (dt.trait_key === "stance_to_narrator") {
+      stance = dt.value;
+    } else if (dt.trait_key === "add_trait") {
+      if (!traits.includes(dt.value)) traits.push(dt.value);
+    } else if (dt.trait_key === "remove_trait") {
+      const idx = traits.indexOf(dt.value);
+      if (idx >= 0) traits.splice(idx, 1);
+    }
+  });
+
+  return { mentalState, stance, traits, applied };
 }
 
 function buildEdges(events, locations) {
@@ -473,12 +705,35 @@ function runAnalysis() {
   render();
 }
 
+async function loadInitialSampleText() {
+  try {
+    const response = await fetch(SAMPLE_TEXT_URL);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${SAMPLE_TEXT_URL}: ${response.status}`);
+    }
+    return await response.text();
+  } catch (error) {
+    console.error(error);
+    return "";
+  }
+}
+
+function initApp() {
+  bindEvents();
+  els.sourceText.value = sampleText;
+  if (!sampleText) {
+    els.sourceText.placeholder = "texts/wings.txt를 불러오지 못했습니다. 로컬 서버로 실행하세요.";
+  }
+  runAnalysis();
+}
+
 function visibleSegmentLimit() {
   return state.spoilerSafe ? state.currentSegment : Number.MAX_SAFE_INTEGER;
 }
 
 function segmentOrderById(segmentId) {
-  return state.segments.find((segment) => segment.segment_id === segmentId)?.order || 0;
+  if (!segmentId) return Infinity;
+  return state.segments.find((segment) => segment.segment_id === segmentId)?.order ?? Infinity;
 }
 
 function isVisibleAfter(segmentId) {
@@ -487,6 +742,27 @@ function isVisibleAfter(segmentId) {
 
 function visibleEvents() {
   return state.events.filter((event) => isVisibleAfter(event.reader_visible_after_segment_id));
+}
+
+function currentTimelineEvents() {
+  const currentSegmentId = state.segments[state.currentSegment - 1]?.segment_id || "";
+  const filter = els.eventTypeFilter?.value || "all";
+  return visibleEvents().filter((event) => {
+    const belongsToCurrentTimeline = event.evidence_segment_ids.includes(currentSegmentId);
+    const matchesFilter = filter === "all" || event.event_type === filter;
+    return belongsToCurrentTimeline && matchesFilter;
+  });
+}
+
+function recentTimelineEvents(limit = MAP_TIMELINE_WINDOW) {
+  const filter = els.eventTypeFilter?.value || "all";
+  return state.events
+    .filter((event) => {
+      const isBeforeReader = segmentOrderById(event.reader_visible_after_segment_id) <= state.currentSegment;
+      const matchesFilter = filter === "all" || event.event_type === filter;
+      return isBeforeReader && matchesFilter;
+    })
+    .slice(-limit);
 }
 
 function render() {
@@ -528,32 +804,51 @@ function renderReader() {
 }
 
 function renderGraph() {
-  const locations = state.locations.filter((location) => {
-    const firstEvidence = eventOrLocationFirstSegment(location);
-    return firstEvidence ? isVisibleAfter(firstEvidence) : true;
-  });
-  const locationIds = new Set(locations.map((location) => location.location_id));
-  const edges = state.edges.filter((edge) => locationIds.has(edge.source_id) && locationIds.has(edge.target_id));
-  els.mapStats.textContent = `${locations.length} 노드`;
+  const graphEvents = recentTimelineEvents();
+  const graphLocNames = new Set(graphEvents.flatMap((event) => event.locations));
+  const visibleLocs = state.locations.filter((location) => graphLocNames.has(location.canonical_name));
+
+  const currentSegmentId = state.segments[state.currentSegment - 1]?.segment_id || "";
+  const currentEvents = graphEvents.filter((e) =>
+    e.evidence_segment_ids.includes(currentSegmentId)
+  );
+  const currentLocNames = new Set(currentEvents.flatMap((e) => e.locations));
+  const fallbackCurrentLoc = latestTimelineLocationId(graphEvents);
+
+  const graphSegmentIds = new Set(graphEvents.flatMap((event) => event.evidence_segment_ids));
+  const visibleLocIds = new Set(visibleLocs.map((l) => l.location_id));
+  const edges = state.edges.filter(
+    (edge) =>
+      visibleLocIds.has(edge.source_id) &&
+      visibleLocIds.has(edge.target_id) &&
+      edge.evidence_segment_ids.some((sid) => graphSegmentIds.has(sid))
+  );
+
+  els.mapStats.textContent = `${visibleLocs.length} 노드 · 최근 ${graphEvents.length} 이벤트`;
   els.spaceGraph.innerHTML = "";
 
-  if (!locations.length) {
-    drawSvgText("분석된 장소가 없습니다.", 450, 280, "graph-label");
+  if (!visibleLocs.length) {
+    drawSvgText("최근 10개 타임라인에 서술된 장소가 없습니다.", 450, 280, "graph-label");
     return;
   }
 
+  // 4) 위치 배치: narrative_coords 우선, 없으면 원형 fallback
   const centerX = 450;
   const centerY = 280;
-  const radius = Math.min(230, 110 + locations.length * 18);
+  const radius = Math.min(230, 110 + visibleLocs.length * 18);
   const positions = new Map();
-
-  locations.forEach((location, index) => {
-    const angle = (Math.PI * 2 * index) / locations.length - Math.PI / 2;
-    const x = locations.length === 1 ? centerX : centerX + Math.cos(angle) * radius;
-    const y = locations.length === 1 ? centerY : centerY + Math.sin(angle) * radius * 0.72;
-    positions.set(location.location_id, { x, y });
+  visibleLocs.forEach((location, index) => {
+    if (location.narrative_coords) {
+      positions.set(location.location_id, { ...location.narrative_coords });
+    } else {
+      const angle = (Math.PI * 2 * index) / visibleLocs.length - Math.PI / 2;
+      const x = visibleLocs.length === 1 ? centerX : centerX + Math.cos(angle) * radius;
+      const y = visibleLocs.length === 1 ? centerY : centerY + Math.sin(angle) * radius * 0.72;
+      positions.set(location.location_id, { x, y });
+    }
   });
 
+  // 5) 엣지 렌더
   edges.forEach((edge) => {
     const source = positions.get(edge.source_id);
     const target = positions.get(edge.target_id);
@@ -568,29 +863,69 @@ function renderGraph() {
     els.spaceGraph.appendChild(line);
   });
 
-  const currentLocationId = latestVisibleLocationId();
-  locations.forEach((location) => {
+  // 6) 노드 렌더 (실제/허구 구분)
+  visibleLocs.forEach((location) => {
     const position = positions.get(location.location_id);
-    const group = svgEl("g", {});
-    const circle = svgEl("circle", {
-      cx: position.x,
-      cy: position.y,
-      r: 54,
-      class: `graph-node ${location.location_id === currentLocationId ? "current" : ""}`
+    const isReal = location.is_fictional === false;
+    const isCurrent =
+      currentLocNames.has(location.canonical_name) ||
+      (currentLocNames.size === 0 && location.location_id === fallbackCurrentLoc);
+
+    const group = svgEl("g", {
+      class: `graph-node-group ${isReal ? "real" : "fictional"} ${isCurrent ? "current" : ""}`,
+      "data-location-id": location.location_id
     });
+
+    if (isReal) {
+      // 실제 장소: 핀 모양 (원 + 삼각형 꼭지)
+      const pinPath = svgEl("path", {
+        d: `M ${position.x} ${position.y - 38}
+            a 22 22 0 1 0 0.01 0
+            M ${position.x - 12} ${position.y - 18}
+            L ${position.x} ${position.y}
+            L ${position.x + 12} ${position.y - 18}
+            Z`,
+        class: `graph-node real ${isCurrent ? "current" : ""}`
+      });
+      group.appendChild(pinPath);
+    } else {
+      // 허구 장소: 원형
+      const circle = svgEl("circle", {
+        cx: position.x,
+        cy: position.y - 18,
+        r: 28,
+        class: `graph-node fictional ${isCurrent ? "current" : ""}`
+      });
+      group.appendChild(circle);
+    }
+
     const label = svgEl("text", {
       x: position.x,
-      y: position.y - 4,
+      y: position.y + 8,
       class: "graph-label"
     });
     label.textContent = location.canonical_name;
+
     const caption = svgEl("text", {
       x: position.x,
-      y: position.y + 22,
+      y: position.y + 24,
       class: "graph-caption"
     });
-    caption.textContent = `${location.type} ${Math.round(location.confidence * 100)}%`;
-    group.append(circle, label, caption);
+    caption.textContent = isReal
+      ? `실제 · ${location.real_world_candidate ? "좌표 " + (location.real_coords ? "✓" : "—") : location.type}`
+      : `허구 · ${location.type}`;
+
+    const title = svgEl("title", {});
+    title.textContent =
+      location.symbolic_meaning ||
+      location.real_world_candidate ||
+      location.canonical_name;
+
+    group.append(label, caption, title);
+    group.addEventListener("click", () => {
+      const firstSeg = location.evidence_segment_ids?.[0];
+      if (firstSeg) focusSegment(firstSeg);
+    });
     els.spaceGraph.appendChild(group);
   });
 }
@@ -649,31 +984,105 @@ function renderTimeline() {
 }
 
 function renderCharacters() {
-  els.characterStats.textContent = `${state.characters.length} 명`;
+  const visible = state.characters.filter((c) =>
+    isVisibleAfter(c.first_appearance_segment_id)
+  );
+  els.characterStats.textContent = `${visible.length} / ${state.characters.length} 명`;
   els.characterCards.innerHTML = "";
-  if (!state.characters.length) {
-    els.characterCards.innerHTML = `<div class="empty-state">분석된 인물이 없습니다.</div>`;
+  if (!visible.length) {
+    els.characterCards.innerHTML = `<div class="empty-state">현재 시점에 등장한 인물이 없습니다.</div>`;
     return;
   }
 
-  state.characters.forEach((character) => {
-    const states = latestStatesForCharacter(character.character_id);
-    const location = state.locations.find((item) => item.location_id === states?.physical_location_id);
+  visible.forEach((character) => {
+    const stateNow = characterStateAt(character, state.currentSegment);
+    const lastChange = stateNow.applied[stateNow.applied.length - 1];
+    const physicalState = latestStatesForCharacter(character.character_id);
+    const physLoc = state.locations.find(
+      (l) => l.location_id === physicalState?.physical_location_id
+    );
+
+    const appearance = character.appearance || { text: "", traits: [] };
+    const personality = character.personality || { traits: [] };
+
+    const appearanceTagsHtml = (appearance.traits || [])
+      .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+      .join("");
+    const personalityTagsHtml = stateNow.traits
+      .map((t) => {
+        const isAdded = stateNow.applied.some(
+          (dt) => dt.trait_key === "add_trait" && dt.value === t
+        );
+        return `<span class="tag ${isAdded ? "added" : ""}">${escapeHtml(t)}</span>`;
+      })
+      .join("");
+
+    const changeHistoryHtml = stateNow.applied.length
+      ? stateNow.applied
+          .slice(-5)
+          .map((dt) => {
+            const seg = state.segments.find((s) => s.segment_id === dt.segment_id);
+            const segLabel = seg ? `P${String(seg.order).padStart(3, "0")}` : dt.segment_id;
+            const arrow =
+              dt.trait_key === "mental_state"
+                ? `${escapeHtml(dt.previous_value || "?")} → ${escapeHtml(dt.value)}`
+                : dt.trait_key === "add_trait"
+                ? `+ ${escapeHtml(dt.value)}`
+                : dt.trait_key === "stance_to_narrator"
+                ? `관계: ${escapeHtml(dt.value)}`
+                : `${escapeHtml(dt.trait_key)}: ${escapeHtml(dt.value)}`;
+            const isLast = dt === lastChange;
+            return `<li class="${isLast ? "current-change" : ""}">${segLabel} ${arrow}</li>`;
+          })
+          .join("")
+      : `<li class="muted">아직 변화 없음</li>`;
+
     const card = document.createElement("article");
     card.className = "character-card";
     card.innerHTML = `
-      <h3>${escapeHtml(character.canonical_name)}</h3>
+      <header class="card-header">
+        <h3>${escapeHtml(character.canonical_name)}${
+      character.real_name ? ` <small>(${escapeHtml(character.real_name)})</small>` : ""
+    }</h3>
+        <span class="tag fact">${Math.round(character.confidence * 100)}%</span>
+      </header>
       <div class="tag-row">
         <span class="tag">${escapeHtml(character.role || "인물")}</span>
-        <span class="tag fact">${Math.round(character.confidence * 100)}%</span>
       </div>
-      <p>${escapeHtml(character.description || "")}</p>
-      <ul class="fact-list">
-        <li>최근 위치: ${escapeHtml(location?.canonical_name || "미정")}</li>
-        <li>상태: ${escapeHtml(states?.mental_state || "미정")}</li>
-        <li>관계 변화: ${escapeHtml(states?.relation_changes || "없음")}</li>
-      </ul>
+
+      <section class="char-section">
+        <h4>외양</h4>
+        ${appearance.text ? `<p>${escapeHtml(appearance.text)}</p>` : ""}
+        <div class="tag-row">${appearanceTagsHtml}</div>
+      </section>
+
+      <section class="char-section">
+        <h4>성격 (현재 시점)</h4>
+        <div class="tag-row">${personalityTagsHtml}</div>
+      </section>
+
+      <section class="char-section">
+        <h4>현재 상태 <small>(P${String(state.currentSegment).padStart(3, "0")} 시점)</small></h4>
+        <ul class="fact-list">
+          <li>심리: <strong>${escapeHtml(stateNow.mentalState)}</strong></li>
+          ${stateNow.stance ? `<li>관계: ${escapeHtml(stateNow.stance)}</li>` : ""}
+          <li>위치: ${escapeHtml(physLoc?.canonical_name || "미정")}</li>
+        </ul>
+      </section>
+
+      <section class="char-section">
+        <h4>변화 이력</h4>
+        <ul class="change-history">${changeHistoryHtml}</ul>
+      </section>
     `;
+
+    if (lastChange) {
+      card.addEventListener("click", () => {
+        const seg = state.segments.find((s) => s.segment_id === lastChange.segment_id);
+        if (seg) focusSegment(lastChange.segment_id);
+      });
+    }
+
     els.characterCards.appendChild(card);
   });
 }
@@ -721,7 +1130,7 @@ function renderEventEditor() {
     row.className = "editor-row";
     row.innerHTML = `
       <select data-kind="event" data-field="event_type" data-id="${event.event_id}" aria-label="사건 유형">
-        ${["appearance", "movement", "conversation", "perception", "conflict", "realization", "background"].map((type) => `<option value="${type}" ${event.event_type === type ? "selected" : ""}>${labelEvent(type)}</option>`).join("")}
+        ${["appearance", "movement", "conversation", "perception", "conflict", "realization", "stasis", "symbolic", "background"].map((type) => `<option value="${type}" ${event.event_type === type ? "selected" : ""}>${labelEvent(type)}</option>`).join("")}
       </select>
       <select data-kind="event" data-field="certainty" data-id="${event.event_id}" aria-label="확실성">
         ${["explicit", "inferred", "symbolic"].map((type) => `<option value="${type}" ${event.certainty === type ? "selected" : ""}>${labelCertainty(type)}</option>`).join("")}
@@ -805,6 +1214,12 @@ function latestVisibleLocationId() {
   return locationIdByName(state.locations, locationEvent.locations[0]);
 }
 
+function latestTimelineLocationId(events) {
+  const locationEvent = events.slice().reverse().find((event) => event.locations.length);
+  if (!locationEvent) return "";
+  return locationIdByName(state.locations, locationEvent.locations[0]);
+}
+
 function eventOrLocationFirstSegment(location) {
   return location.evidence_segment_ids?.[0] || "";
 }
@@ -825,6 +1240,8 @@ function labelEvent(type) {
     perception: "인식",
     conflict: "갈등",
     realization: "깨달음",
+    stasis: "정체",
+    symbolic: "상징",
     background: "배경"
   };
   return labels[type] || type;
@@ -886,7 +1303,10 @@ function bindEvents() {
     render();
   });
 
-  els.eventTypeFilter.addEventListener("change", renderTimeline);
+  els.eventTypeFilter.addEventListener("change", () => {
+    renderGraph();
+    renderTimeline();
+  });
 
   els.rebuildBtn.addEventListener("click", () => {
     state.edges = buildEdges(state.events, state.locations);
@@ -966,6 +1386,4 @@ function setExportFormat(format) {
   $$(".tab-panel").forEach((item) => item.classList.toggle("active", item.id === "exportTab"));
 }
 
-bindEvents();
-els.sourceText.value = sampleText;
-runAnalysis();
+initApp();
