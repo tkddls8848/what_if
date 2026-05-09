@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Novel IF Reader</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Novel IF Reader</h1>
+          <p>독서 위치 기준으로 인물, 공간, 사건 상태를 분석합니다.</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="loadSampleBtn" type="button">샘플</button>
+          <button id="analyzeBtn" type="button" class="primary">분석</button>
+          <button id="exportJsonBtn" type="button">JSON</button>
+          <button id="exportCsvBtn" type="button">CSV</button>
+          <button id="exportMdBtn" type="button">MD</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="reader-pane" aria-label="원문 리더">
+          <div class="pane-header">
+            <div>
+              <h2>Reader</h2>
+              <span id="readerStats">0 문단</span>
+            </div>
+            <label class="toggle-row">
+              <input id="spoilerToggle" type="checkbox" checked>
+              <span>스포일러 차단</span>
+            </label>
+          </div>
+          <textarea id="sourceText" spellcheck="false"></textarea>
+          <div class="reader-controls">
+            <label for="readerPosition">독서 위치</label>
+            <input id="readerPosition" type="range" min="1" max="1" value="1">
+            <output id="readerPositionLabel">1 / 1</output>
+          </div>
+          <div id="paragraphList" class="paragraph-list" aria-label="문단 목록"></div>
+        </section>
+
+        <section class="analysis-pane" aria-label="분석 결과">
+          <nav class="tabs" aria-label="분석 탭">
+            <button class="tab active" type="button" data-tab="map">Map</button>
+            <button class="tab" type="button" data-tab="timeline">Timeline</button>
+            <button class="tab" type="button" data-tab="characters">Characters</button>
+            <button class="tab" type="button" data-tab="review">Review</button>
+            <button class="tab" type="button" data-tab="export">Export</button>
+          </nav>
+
+          <section id="mapTab" class="tab-panel active">
+            <div class="panel-grid map-grid">
+              <div class="graph-panel">
+                <div class="pane-header compact">
+                  <h2>공간 그래프</h2>
+                  <span id="mapStats">0 노드</span>
+                </div>
+                <svg id="spaceGraph" viewBox="0 0 900 560" role="img" aria-label="공간 그래프"></svg>
+              </div>
+              <aside class="evidence-panel">
+                <div class="pane-header compact">
+                  <h2>근거 문장</h2>
+                </div>
+                <div id="evidenceList" class="evidence-list"></div>
+              </aside>
+            </div>
+          </section>
+
+          <section id="timelineTab" class="tab-panel">
+            <div class="pane-header compact">
+              <h2>사건 타임라인</h2>
+              <select id="eventTypeFilter" aria-label="사건 유형 필터">
+                <option value="all">전체</option>
+                <option value="appearance">등장</option>
+                <option value="movement">이동</option>
+                <option value="conversation">대화</option>
+                <option value="perception">인식</option>
+                <option value="conflict">갈등</option>
+                <option value="realization">깨달음</option>
+              </select>
+            </div>
+            <div id="timelineList" class="timeline-list"></div>
+          </section>
+
+          <section id="charactersTab" class="tab-panel">
+            <div class="pane-header compact">
+              <h2>인물 상태</h2>
+              <span id="characterStats">0 명</span>
+            </div>
+            <div id="characterCards" class="character-cards"></div>
+          </section>
+
+          <section id="reviewTab" class="tab-panel">
+            <div class="pane-header compact">
+              <h2>수정</h2>
+              <button id="rebuildBtn" type="button">재계산</button>
+            </div>
+            <div class="review-layout">
+              <section>
+                <h3>인물</h3>
+                <div id="characterEditor" class="editor-list"></div>
+              </section>
+              <section>
+                <h3>장소</h3>
+                <div id="locationEditor" class="editor-list"></div>
+              </section>
+              <section>
+                <h3>사건</h3>
+                <div id="eventEditor" class="editor-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="exportTab" class="tab-panel">
+            <div class="pane-header compact">
+              <h2>내보내기</h2>
+              <button id="copyExportBtn" type="button">복사</button>
+            </div>
+            <textarea id="exportOutput" readonly></textarea>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
