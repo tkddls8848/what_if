@@ -201,7 +201,6 @@ const els = {
   paragraphList: $("#paragraphList"),
   spaceGraph: $("#spaceGraph"),
   mapStats: $("#mapStats"),
-  evidenceList: $("#evidenceList"),
   eventTypeFilter: $("#eventTypeFilter"),
   timelineList: $("#timelineList"),
   characterStats: $("#characterStats"),
@@ -276,8 +275,7 @@ function analyzeText(rawText) {
         start_segment_id: segment.segment_id,
         end_segment_id: segment.segment_id,
         dominant_location_id: "",
-        narrator_state: "",
-        confidence: 0.68
+        narrator_state: ""
       };
     }
     scenes[sceneIndex].end_segment_id = segment.segment_id;
@@ -308,9 +306,7 @@ function analyzeText(rawText) {
       author: "",
       publication_year: "",
       source_url: "",
-      source_accessed_at: new Date().toISOString().slice(0, 10),
-      copyright_note: "User supplied text",
-      raw_text_hash: hashText(text)
+      source_accessed_at: new Date().toISOString().slice(0, 10)
     },
     segments,
     scenes,
@@ -340,19 +336,17 @@ function extractCharacters(segments) {
       appearance: {
         text: seed.appearance_text || "",
         traits: [...(seed.appearance_traits || [])],
-        evidence_segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
+        segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
         last_updated_by_event: null
       },
       personality: {
         traits: [...(seed.personality_traits || [])],
-        evidence_segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
+        segment_ids: hits.slice(0, 2).map((s) => s.segment_id),
         last_updated_by_event: null
       },
       initial_mental_state: seed.initial_mental_state || "미정",
       dynamic_traits: [],
-      confidence: confidenceFromHits(hits.length, segments.length),
-      evidence_segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id),
-      evidence: hits.slice(0, 3).map((segment) => firstSentence(segment.text))
+      segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id)
     });
   });
 
@@ -379,9 +373,7 @@ function extractCharacters(segments) {
       description: "원문에서 자동 감지된 인물 후보",
       first_appearance_segment_id: hits[0].segment_id,
       role: "인물 후보",
-      confidence: confidenceFromHits(hits.length, segments.length) * 0.75,
-      evidence_segment_ids: hits.slice(0, 2).map((segment) => segment.segment_id),
-      evidence: hits.slice(0, 2).map((segment) => firstSentence(segment.text))
+      segment_ids: hits.slice(0, 2).map((segment) => segment.segment_id)
     });
   });
 
@@ -410,9 +402,7 @@ function extractLocations(segments) {
       parent_location_id: "",
       parent_canonical: seed.parent || "",
       first_appearance_segment_id: hits[0].segment_id,
-      confidence: confidenceFromHits(hits.length, segments.length),
-      evidence_segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id),
-      evidence: hits.slice(0, 3).map((segment) => firstSentence(segment.text))
+      segment_ids: hits.slice(0, 3).map((segment) => segment.segment_id)
     });
   });
 
@@ -437,9 +427,7 @@ function extractLocations(segments) {
       description: "원문에서 자동 감지된 장소 후보",
       real_world_candidate: "",
       parent_location_id: "",
-      confidence: confidenceFromHits(hits.length, segments.length) * 0.72,
-      evidence_segment_ids: hits.slice(0, 2).map((segment) => segment.segment_id),
-      evidence: hits.slice(0, 2).map((segment) => firstSentence(segment.text))
+      segment_ids: hits.slice(0, 2).map((segment) => segment.segment_id)
     });
   });
 
@@ -471,9 +459,7 @@ function extractEvents(segments, characters, locations) {
         summary: summarizeSentence(sentence),
         characters: unique(eventCharacters),
         locations: unique(eventLocations),
-        evidence_segment_ids: [segment.segment_id],
-        evidence: [sentence],
-        certainty: inferCertainty(sentence),
+        segment_ids: [segment.segment_id],
         reader_visible_after_segment_id: segment.segment_id
       });
     });
@@ -491,7 +477,7 @@ function buildCharacterStates(segments, characters, locations, events) {
     const knownFacts = [];
 
     segments.forEach((segment) => {
-      const segmentEvents = events.filter((event) => event.evidence_segment_ids.includes(segment.segment_id));
+      const segmentEvents = events.filter((event) => event.segment_ids.includes(segment.segment_id));
       const characterEvents = segmentEvents.filter((event) => event.characters.includes(character.canonical_name));
       if (!characterEvents.length && !includesAlias(segment.text, character.aliases)) return;
 
@@ -507,8 +493,7 @@ function buildCharacterStates(segments, characters, locations, events) {
         physical_location_id: currentLocation,
         mental_state: mentalState,
         relation_changes: inferRelationChange(segment.text, character.canonical_name),
-        known_facts: unique(knownFacts).slice(-4),
-        uncertainty_note: mentalState === "미정" ? "상태 근거가 약함" : ""
+        known_facts: unique(knownFacts).slice(-4)
       });
     });
   });
@@ -603,8 +588,7 @@ function buildEdges(events, locations) {
         target_type: "location",
         target_id: locationIdByName(locations, firstLocation),
         relation_type: "moves_to",
-        evidence_segment_ids: event.evidence_segment_ids,
-        certainty: event.certainty
+        segment_ids: event.segment_ids
       });
     }
     if (firstLocation) previousLocation = firstLocation;
@@ -619,11 +603,10 @@ function buildEdges(events, locations) {
         target_type: "location",
         target_id: locations[index + 1].location_id,
         relation_type: "associated_with",
-        evidence_segment_ids: unique([
-          ...(locations[index].evidence_segment_ids || []),
-          ...(locations[index + 1].evidence_segment_ids || [])
-        ]).slice(0, 2),
-        certainty: "inferred"
+        segment_ids: unique([
+          ...(locations[index].segment_ids || []),
+          ...(locations[index + 1].segment_ids || [])
+        ]).slice(0, 2)
       });
     }
   }
@@ -638,12 +621,6 @@ function inferEventType(sentence) {
   return "background";
 }
 
-function inferCertainty(sentence) {
-  if (/같|듯|아마|추정|분명하지|확실하지|인지/.test(sentence)) return "inferred";
-  if (/상징|꿈|생각|떠올/.test(sentence)) return "symbolic";
-  return "explicit";
-}
-
 function inferMentalState(text) {
   if (/불안|두려|알 수 없|확실하지|분명하지/.test(text)) return "불안정";
   if (/생각|떠올|느꼈|느껴/.test(text)) return "성찰";
@@ -656,15 +633,6 @@ function inferRelationChange(text, characterName) {
   if (characterName === "아내" && /바라보|말없이|닫혔|사이/.test(text)) return "거리감 증가";
   if (/이야기|말|불렸/.test(text)) return "접촉 발생";
   return "";
-}
-
-function confidenceFromHits(hitCount, total) {
-  const base = total ? hitCount / total : 0;
-  return Math.min(0.96, Math.max(0.45, 0.48 + base));
-}
-
-function firstSentence(text) {
-  return splitSentences(text)[0] || text;
 }
 
 function summarizeSentence(sentence) {
@@ -685,15 +653,6 @@ function countBy(values) {
 
 function locationIdByName(locations, name) {
   return locations.find((location) => location.canonical_name === name)?.location_id || "";
-}
-
-function hashText(text) {
-  let hash = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash << 5) - hash + text.charCodeAt(index);
-    hash |= 0;
-  }
-  return `h${Math.abs(hash)}`;
 }
 
 function runAnalysis() {
@@ -727,38 +686,28 @@ function initApp() {
   runAnalysis();
 }
 
-function visibleSegmentLimit() {
-  return state.spoilerSafe ? state.currentSegment : Number.MAX_SAFE_INTEGER;
-}
-
 function segmentOrderById(segmentId) {
   if (!segmentId) return Infinity;
   return state.segments.find((segment) => segment.segment_id === segmentId)?.order ?? Infinity;
+}
+
+function visibleSegmentLimit() {
+  return state.spoilerSafe ? state.currentSegment : Number.MAX_SAFE_INTEGER;
 }
 
 function isVisibleAfter(segmentId) {
   return segmentOrderById(segmentId) <= visibleSegmentLimit();
 }
 
-function visibleEvents() {
+function timelineEvents() {
   return state.events.filter((event) => isVisibleAfter(event.reader_visible_after_segment_id));
-}
-
-function currentTimelineEvents() {
-  const currentSegmentId = state.segments[state.currentSegment - 1]?.segment_id || "";
-  const filter = els.eventTypeFilter?.value || "all";
-  return visibleEvents().filter((event) => {
-    const belongsToCurrentTimeline = event.evidence_segment_ids.includes(currentSegmentId);
-    const matchesFilter = filter === "all" || event.event_type === filter;
-    return belongsToCurrentTimeline && matchesFilter;
-  });
 }
 
 function recentTimelineEvents(limit = MAP_TIMELINE_WINDOW) {
   const filter = els.eventTypeFilter?.value || "all";
   return state.events
     .filter((event) => {
-      const isBeforeReader = segmentOrderById(event.reader_visible_after_segment_id) <= state.currentSegment;
+      const isBeforeReader = isVisibleAfter(event.reader_visible_after_segment_id);
       const matchesFilter = filter === "all" || event.event_type === filter;
       return isBeforeReader && matchesFilter;
     })
@@ -768,7 +717,6 @@ function recentTimelineEvents(limit = MAP_TIMELINE_WINDOW) {
 function render() {
   renderReader();
   renderGraph();
-  renderEvidence();
   renderTimeline();
   renderCharacters();
   renderEditors();
@@ -810,18 +758,18 @@ function renderGraph() {
 
   const currentSegmentId = state.segments[state.currentSegment - 1]?.segment_id || "";
   const currentEvents = graphEvents.filter((e) =>
-    e.evidence_segment_ids.includes(currentSegmentId)
+    e.segment_ids.includes(currentSegmentId)
   );
   const currentLocNames = new Set(currentEvents.flatMap((e) => e.locations));
-  const fallbackCurrentLoc = latestTimelineLocationId(graphEvents);
+  const defaultCurrentLoc = latestTimelineLocationId(graphEvents);
 
-  const graphSegmentIds = new Set(graphEvents.flatMap((event) => event.evidence_segment_ids));
+  const graphSegmentIds = new Set(graphEvents.flatMap((event) => event.segment_ids));
   const visibleLocIds = new Set(visibleLocs.map((l) => l.location_id));
   const edges = state.edges.filter(
     (edge) =>
       visibleLocIds.has(edge.source_id) &&
       visibleLocIds.has(edge.target_id) &&
-      edge.evidence_segment_ids.some((sid) => graphSegmentIds.has(sid))
+      edge.segment_ids.some((sid) => graphSegmentIds.has(sid))
   );
 
   els.mapStats.textContent = `${visibleLocs.length} 노드 · 최근 ${graphEvents.length} 이벤트`;
@@ -832,7 +780,7 @@ function renderGraph() {
     return;
   }
 
-  // 4) 위치 배치: narrative_coords 우선, 없으면 원형 fallback
+  // 4) 위치 배치: narrative_coords 우선, 없으면 원형 배치
   const centerX = 450;
   const centerY = 280;
   const radius = Math.min(230, 110 + visibleLocs.length * 18);
@@ -858,7 +806,7 @@ function renderGraph() {
       y1: source.y,
       x2: target.x,
       y2: target.y,
-      class: `graph-edge ${edge.certainty}`
+      class: "graph-edge"
     });
     els.spaceGraph.appendChild(line);
   });
@@ -869,7 +817,7 @@ function renderGraph() {
     const isReal = location.is_fictional === false;
     const isCurrent =
       currentLocNames.has(location.canonical_name) ||
-      (currentLocNames.size === 0 && location.location_id === fallbackCurrentLoc);
+      (currentLocNames.size === 0 && location.location_id === defaultCurrentLoc);
 
     const group = svgEl("g", {
       class: `graph-node-group ${isReal ? "real" : "fictional"} ${isCurrent ? "current" : ""}`,
@@ -923,38 +871,16 @@ function renderGraph() {
 
     group.append(label, caption, title);
     group.addEventListener("click", () => {
-      const firstSeg = location.evidence_segment_ids?.[0];
+      const firstSeg = location.segment_ids?.[0];
       if (firstSeg) focusSegment(firstSeg);
     });
     els.spaceGraph.appendChild(group);
   });
 }
 
-function renderEvidence() {
-  const events = visibleEvents().slice(-8).reverse();
-  els.evidenceList.innerHTML = "";
-  if (!events.length) {
-    els.evidenceList.innerHTML = `<div class="empty-state">표시할 근거가 없습니다.</div>`;
-    return;
-  }
-  events.forEach((event) => {
-    const item = document.createElement("article");
-    item.className = "evidence-item";
-    item.innerHTML = `
-      <div class="tag-row">
-        <span class="tag fact">${event.event_id}</span>
-        <span class="tag ${event.certainty}">${labelCertainty(event.certainty)}</span>
-        <span class="tag">${labelEvent(event.event_type)}</span>
-      </div>
-      <p>${escapeHtml(event.evidence[0] || event.summary)}</p>
-    `;
-    els.evidenceList.appendChild(item);
-  });
-}
-
 function renderTimeline() {
   const filter = els.eventTypeFilter.value;
-  const events = visibleEvents().filter((event) => filter === "all" || event.event_type === filter);
+  const events = timelineEvents().filter((event) => filter === "all" || event.event_type === filter);
   els.timelineList.innerHTML = "";
   if (!events.length) {
     els.timelineList.innerHTML = `<div class="empty-state">표시할 사건이 없습니다.</div>`;
@@ -971,14 +897,13 @@ function renderTimeline() {
       <div>
         <div class="tag-row">
           <span class="tag">${labelEvent(event.event_type)}</span>
-          <span class="tag ${event.certainty}">${labelCertainty(event.certainty)}</span>
           ${event.characters.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}
           ${event.locations.map((name) => `<span class="tag fact">${escapeHtml(name)}</span>`).join("")}
         </div>
         <p>${escapeHtml(event.summary)}</p>
       </div>
     `;
-    item.addEventListener("click", () => focusSegment(event.evidence_segment_ids[0]));
+    item.addEventListener("click", () => focusSegment(event.segment_ids[0]));
     els.timelineList.appendChild(item);
   });
 }
@@ -1044,7 +969,6 @@ function renderCharacters() {
         <h3>${escapeHtml(character.canonical_name)}${
       character.real_name ? ` <small>(${escapeHtml(character.real_name)})</small>` : ""
     }</h3>
-        <span class="tag fact">${Math.round(character.confidence * 100)}%</span>
       </header>
       <div class="tag-row">
         <span class="tag">${escapeHtml(character.role || "인물")}</span>
@@ -1125,15 +1049,12 @@ function renderLocationEditor() {
 
 function renderEventEditor() {
   els.eventEditor.innerHTML = "";
-  visibleEvents().forEach((event) => {
+  timelineEvents().forEach((event) => {
     const row = document.createElement("div");
     row.className = "editor-row";
     row.innerHTML = `
       <select data-kind="event" data-field="event_type" data-id="${event.event_id}" aria-label="사건 유형">
         ${["appearance", "movement", "conversation", "perception", "conflict", "realization", "stasis", "symbolic", "background"].map((type) => `<option value="${type}" ${event.event_type === type ? "selected" : ""}>${labelEvent(type)}</option>`).join("")}
-      </select>
-      <select data-kind="event" data-field="certainty" data-id="${event.event_id}" aria-label="확실성">
-        ${["explicit", "inferred", "symbolic"].map((type) => `<option value="${type}" ${event.certainty === type ? "selected" : ""}>${labelCertainty(type)}</option>`).join("")}
       </select>
       <textarea data-kind="event" data-field="summary" data-id="${event.event_id}" aria-label="사건 요약">${escapeHtml(event.summary)}</textarea>
     `;
@@ -1165,17 +1086,15 @@ function exportPayload() {
 }
 
 function toCsv() {
-  const rows = [["event_id", "scene_id", "type", "certainty", "characters", "locations", "summary", "evidence"]];
+  const rows = [["event_id", "scene_id", "type", "characters", "locations", "summary"]];
   state.events.forEach((event) => {
     rows.push([
       event.event_id,
       event.scene_id,
       event.event_type,
-      event.certainty,
       event.characters.join("|"),
       event.locations.join("|"),
-      event.summary,
-      event.evidence.join(" ")
+      event.summary
     ]);
   });
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
@@ -1188,11 +1107,11 @@ function toMarkdown() {
   });
   lines.push("## Characters", "");
   state.characters.forEach((character) => {
-    lines.push(`- **${character.canonical_name}**: ${character.role || "인물"} (${Math.round(character.confidence * 100)}%)`);
+    lines.push(`- **${character.canonical_name}**: ${character.role || "인물"}`);
   });
   lines.push("", "## Events", "");
   state.events.forEach((event) => {
-    lines.push(`- ${event.event_id} [${labelEvent(event.event_type)} / ${labelCertainty(event.certainty)}] ${event.summary}`);
+    lines.push(`- ${event.event_id} [${labelEvent(event.event_type)}] ${event.summary}`);
   });
   return lines.join("\n");
 }
@@ -1208,20 +1127,10 @@ function latestStatesForCharacter(characterId) {
     .sort((a, b) => segmentOrderById(b.segment_id) - segmentOrderById(a.segment_id))[0];
 }
 
-function latestVisibleLocationId() {
-  const locationEvent = visibleEvents().slice().reverse().find((event) => event.locations.length);
-  if (!locationEvent) return "";
-  return locationIdByName(state.locations, locationEvent.locations[0]);
-}
-
 function latestTimelineLocationId(events) {
   const locationEvent = events.slice().reverse().find((event) => event.locations.length);
   if (!locationEvent) return "";
   return locationIdByName(state.locations, locationEvent.locations[0]);
-}
-
-function eventOrLocationFirstSegment(location) {
-  return location.evidence_segment_ids?.[0] || "";
 }
 
 function focusSegment(segmentId) {
@@ -1243,15 +1152,6 @@ function labelEvent(type) {
     stasis: "정체",
     symbolic: "상징",
     background: "배경"
-  };
-  return labels[type] || type;
-}
-
-function labelCertainty(type) {
-  const labels = {
-    explicit: "명시",
-    inferred: "추정",
-    symbolic: "상징"
   };
   return labels[type] || type;
 }
@@ -1321,7 +1221,6 @@ function bindEvents() {
     if (!kind || !field || !id) return;
     updateEntity(kind, id, field, target.value);
     renderGraph();
-    renderEvidence();
     renderTimeline();
     renderCharacters();
     renderExport();
