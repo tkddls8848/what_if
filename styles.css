@@ -110,8 +110,7 @@ button.primary {
 
 .reader-pane,
 .analysis-pane,
-.graph-panel,
-.evidence-panel {
+.graph-panel {
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -262,11 +261,10 @@ button.primary {
 }
 
 .map-grid {
-  grid-template-columns: minmax(360px, 1fr) minmax(240px, 320px);
+  grid-template-columns: minmax(360px, 1fr);
 }
 
-.graph-panel,
-.evidence-panel {
+.graph-panel {
   box-shadow: none;
 }
 
@@ -286,15 +284,6 @@ button.primary {
   stroke: #83909b;
   stroke-width: 2.2;
   fill: none;
-}
-
-.graph-edge.inferred {
-  stroke-dasharray: 8 7;
-}
-
-.graph-edge.symbolic {
-  stroke: var(--accent-2);
-  stroke-dasharray: 2 7;
 }
 
 .graph-node {
@@ -352,7 +341,6 @@ button.primary {
   pointer-events: none;
 }
 
-.evidence-list,
 .timeline-list,
 .character-cards,
 .editor-list {
@@ -361,7 +349,6 @@ button.primary {
   padding: 12px;
 }
 
-.evidence-item,
 .timeline-item,
 .character-card,
 .editor-row {
@@ -370,7 +357,6 @@ button.primary {
   background: var(--surface);
 }
 
-.evidence-item,
 .timeline-item,
 .character-card {
   padding: 12px;
@@ -398,16 +384,10 @@ button.primary {
   background: var(--soft-green);
 }
 
-.tag.inferred {
-  background: #f1ebd9;
-}
-
-.tag.symbolic,
 .tag.conflict {
   background: var(--soft-red);
 }
 
-.evidence-item p,
 .timeline-item p,
 .character-card p {
   margin: 0;
