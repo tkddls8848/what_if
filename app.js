@@ -1,6 +1,29 @@
 "use strict";
 
-const SAMPLE_TEXT_URL = "texts/wings.txt";
+const DEFAULT_SAMPLE_ID = "wings";
+const CUSTOM_SAMPLE_ID = "custom";
+const DEFAULT_OLLAMA_MODEL = "qwen3.5:4b";
+const OLLAMA_MODEL_PRIORITY = ["qwen3.5:4b", "gemma4:e4b", "gemma3:4b", "qwen3:4b"];
+const SAMPLE_TEXTS = [
+  {
+    id: "wings",
+    title: "날개",
+    author: "이상",
+    year: "1936",
+    url: "texts/wings.txt",
+    source_url: "https://www.davincimap.co.kr/davBase/Source/davSource.jsp?Job=Body&SourID=SOUR001427",
+    rights: "public-domain-candidate"
+  },
+  {
+    id: "gamja",
+    title: "감자",
+    author: "김동인",
+    year: "1925",
+    url: "texts/gamja.txt",
+    source_url: "https://ko.wikisource.org/wiki/%EA%B0%90%EC%9E%90",
+    rights: "public-domain-old-70"
+  }
+];
 const SNAPSHOT_KEY = "novel-if-reader:snapshot:v2";
 
 const STATUS = {
@@ -119,6 +142,104 @@ const LOCATION_SEEDS = [
   }
 ];
 
+CHARACTER_SEEDS.forEach((seed) => {
+  seed.sampleIds = ["wings"];
+});
+
+LOCATION_SEEDS.forEach((seed) => {
+  seed.sampleIds = ["wings"];
+});
+
+CHARACTER_SEEDS.push(
+  {
+    canonical_name: "복녀",
+    aliases: ["복녀", "복네", "복녀는", "복녀가", "복녀의", "복녀를"],
+    role: "주인공",
+    description: "김동인 「감자」의 중심 인물.",
+    sampleIds: ["gamja"]
+  },
+  {
+    canonical_name: "복녀의 남편",
+    aliases: ["남편", "그의 남편", "복녀의 남편", "새서방", "영감"],
+    role: "배우자",
+    description: "복녀의 남편. 게으름과 빈곤이 사건 전개의 배경이 된다.",
+    sampleIds: ["gamja"]
+  },
+  {
+    canonical_name: "왕 서방",
+    aliases: ["왕 서방", "왕서방", "왕 서방은", "왕 서방의"],
+    role: "중심 갈등 인물",
+    description: "채마 밭의 중국인 주인. 후반 갈등의 핵심 인물.",
+    sampleIds: ["gamja"]
+  },
+  {
+    canonical_name: "감독",
+    aliases: ["감독", "감독은", "감독이"],
+    role: "노동 현장 인물",
+    description: "송충이 잡이 노동 장면에서 복녀의 변화를 촉발하는 인물.",
+    sampleIds: ["gamja"]
+  },
+  {
+    canonical_name: "동네 여편네들",
+    aliases: ["여편네", "여편네들", "빈민굴 여인들", "곁집 여편네"],
+    role: "주변 인물",
+    description: "칠성문 밖 빈민굴의 주변 여성 인물 집단.",
+    sampleIds: ["gamja"]
+  }
+);
+
+LOCATION_SEEDS.push(
+  {
+    name: "칠성문 밖 빈민굴",
+    aliases: ["칠성문 밖", "빈민굴", "칠성문 밖 빈민굴"],
+    type: "residential",
+    description: "복녀 부처가 밀려와 살게 되는 중심 공간.",
+    narrative_coords: { x: 460, y: 350 },
+    sampleIds: ["gamja"]
+  },
+  {
+    name: "평양 성 안",
+    aliases: ["평양 성 안", "평양"],
+    type: "public",
+    description: "복녀 부처가 막벌이를 위해 들어간 도시 공간.",
+    narrative_coords: { x: 300, y: 270 },
+    sampleIds: ["gamja"]
+  },
+  {
+    name: "기자묘 솔밭",
+    aliases: ["기자묘", "기자묘 솔밭", "솔밭"],
+    type: "exterior",
+    description: "송충이 잡이 노동이 이루어지는 장소.",
+    narrative_coords: { x: 620, y: 250 },
+    sampleIds: ["gamja"]
+  },
+  {
+    name: "채마 밭",
+    aliases: ["채마 밭", "밭고랑", "밭 가운데"],
+    type: "exterior",
+    description: "감자 도둑질과 왕 서방 관련 사건이 벌어지는 장소.",
+    narrative_coords: { x: 640, y: 430 },
+    sampleIds: ["gamja"]
+  },
+  {
+    name: "왕 서방의 집",
+    aliases: ["왕 서방의 집", "왕 서방네", "왕서방의 집"],
+    type: "interior",
+    description: "후반부 갈등과 결말이 발생하는 장소.",
+    parent: "채마 밭",
+    narrative_coords: { x: 760, y: 370 },
+    sampleIds: ["gamja"]
+  },
+  {
+    name: "공동묘지",
+    aliases: ["공동묘지", "무덤"],
+    type: "public",
+    description: "결말에서 복녀의 죽음이 처리되는 장소.",
+    narrative_coords: { x: 790, y: 520 },
+    sampleIds: ["gamja"]
+  }
+);
+
 const EVENT_LEXICON = [
   { type: "movement", words: ["가다", "간다", "갔다", "돌아오", "외출", "나가", "들어오", "건너간", "올라", "내려", "찾아"] },
   { type: "conversation", words: ["말", "이야기", "묻", "대답", "소리", "불렀", "속삭", "농"] },
@@ -139,6 +260,8 @@ const MENTAL_STATE_LEXICON = [
 
 const state = {
   analysis: null,
+  currentSampleId: DEFAULT_SAMPLE_ID,
+  uploadedDocument: null,
   currentSegment: 1,
   spoilerSafe: true,
   selected: null,
@@ -155,7 +278,13 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const els = {
   sourceText: $("#sourceText"),
+  sampleSelect: $("#sampleSelect"),
   loadSampleBtn: $("#loadSampleBtn"),
+  uploadTextBtn: $("#uploadTextBtn"),
+  textFileInput: $("#textFileInput"),
+  analyzerMode: $("#analyzerMode"),
+  ollamaModel: $("#ollamaModel"),
+  generateSeedBtn: $("#generateSeedBtn"),
   analyzeBtn: $("#analyzeBtn"),
   saveSnapshotBtn: $("#saveSnapshotBtn"),
   loadSnapshotBtn: $("#loadSnapshotBtn"),
@@ -187,9 +316,8 @@ initApp();
 
 async function initApp() {
   bindEvents();
-  const sampleText = await loadText(SAMPLE_TEXT_URL);
-  els.sourceText.value = sampleText;
-  runAnalysis();
+  await refreshOllamaModelOptions();
+  await loadSample(DEFAULT_SAMPLE_ID);
 }
 
 async function loadText(url) {
@@ -202,20 +330,83 @@ async function loadText(url) {
   }
 }
 
+async function refreshOllamaModelOptions() {
+  const fallbackOptions = OLLAMA_MODEL_PRIORITY.map((model) => ({ name: model, installed: false }));
+  try {
+    const response = await fetch("/api/ollama/models");
+    if (!response.ok) {
+      renderOllamaModelOptions(fallbackOptions, DEFAULT_OLLAMA_MODEL);
+      return;
+    }
+    const payload = await response.json();
+    const installed = (payload.models || []).map((model) => model.name);
+    const suggestions = unique([...installed, ...OLLAMA_MODEL_PRIORITY]).map((name) => ({
+      name,
+      installed: installed.includes(name)
+    }));
+    const preferred = OLLAMA_MODEL_PRIORITY.find((model) => installed.includes(model)) || installed[0] || DEFAULT_OLLAMA_MODEL;
+    renderOllamaModelOptions(suggestions, preferred);
+  } catch (_error) {
+    renderOllamaModelOptions(fallbackOptions, els.ollamaModel.value || DEFAULT_OLLAMA_MODEL);
+  }
+}
+
+function renderOllamaModelOptions(models, selectedModel) {
+  const options = models.length ? models : OLLAMA_MODEL_PRIORITY.map((name) => ({ name, installed: false }));
+  els.ollamaModel.innerHTML = options
+    .map((model) => {
+      const label = model.installed ? `${model.name} (설치됨)` : model.name;
+      return `<option value="${escapeAttr(model.name)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  els.ollamaModel.value = options.some((model) => model.name === selectedModel)
+    ? selectedModel
+    : options[0].name;
+}
+
 function bindEvents() {
   els.loadSampleBtn.addEventListener("click", async () => {
-    els.sourceText.value = await loadText(SAMPLE_TEXT_URL);
-    state.currentSegment = 1;
-    runAnalysis();
+    await loadSample(els.sampleSelect.value);
   });
 
-  els.analyzeBtn.addEventListener("click", () => {
+  els.sampleSelect.addEventListener("change", async (event) => {
+    if (event.target.value === CUSTOM_SAMPLE_ID && state.uploadedDocument) {
+      state.currentSampleId = CUSTOM_SAMPLE_ID;
+      state.currentSegment = 1;
+      runAnalysis();
+      return;
+    }
+    await loadSample(event.target.value);
+  });
+
+  els.uploadTextBtn.addEventListener("click", () => {
+    els.textFileInput.click();
+  });
+
+  els.textFileInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await loadUploadedText(file);
+    event.target.value = "";
+  });
+
+  els.analyzeBtn.addEventListener("click", async () => {
     state.currentSegment = 1;
-    runAnalysis();
+    await runAnalysis();
+  });
+
+  els.generateSeedBtn.addEventListener("click", async () => {
+    state.currentSegment = 1;
+    await runAnalysis({ forceDynamicSeed: true, triggerButton: els.generateSeedBtn });
   });
 
   els.saveSnapshotBtn.addEventListener("click", () => {
-    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ analysis: state.analysis, sourceText: els.sourceText.value }));
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+      analysis: state.analysis,
+      sourceText: els.sourceText.value,
+      currentSampleId: state.currentSampleId,
+      uploadedDocument: state.uploadedDocument
+    }));
     flashButton(els.saveSnapshotBtn, "저장됨");
   });
 
@@ -224,6 +415,10 @@ function bindEvents() {
     if (!raw) return flashButton(els.loadSnapshotBtn, "없음");
     const snapshot = JSON.parse(raw);
     els.sourceText.value = snapshot.sourceText || "";
+    state.uploadedDocument = snapshot.uploadedDocument || null;
+    if (state.uploadedDocument) ensureCustomSampleOption(state.uploadedDocument.title);
+    state.currentSampleId = snapshot.currentSampleId || snapshot.analysis?.document?.sample_id || DEFAULT_SAMPLE_ID;
+    els.sampleSelect.value = state.currentSampleId;
     state.analysis = snapshot.analysis || null;
     state.currentSegment = 1;
     renderAll();
@@ -324,34 +519,471 @@ function bindEvents() {
   });
 }
 
-function runAnalysis() {
-  state.analysis = analyzeNovel({
-    title: detectTitle(els.sourceText.value),
+async function loadSample(sampleId) {
+  if (sampleId === CUSTOM_SAMPLE_ID && state.uploadedDocument) {
+    state.currentSampleId = CUSTOM_SAMPLE_ID;
+    els.sampleSelect.value = CUSTOM_SAMPLE_ID;
+    state.currentSegment = 1;
+    await runAnalysis();
+    return;
+  }
+  const sample = getSample(sampleId);
+  state.currentSampleId = sample.id;
+  els.sampleSelect.value = sample.id;
+  els.sourceText.value = await loadText(sample.url);
+  state.currentSegment = 1;
+  await runAnalysis();
+}
+
+async function loadUploadedText(file) {
+  const text = await file.text();
+  const title = titleFromFileName(file.name) || detectTitle(text);
+  state.uploadedDocument = {
+    id: CUSTOM_SAMPLE_ID,
+    title,
+    author: "",
+    year: "",
+    url: `upload:${file.name}`,
+    source_url: "",
+    rights: "user-provided"
+  };
+  ensureCustomSampleOption(title);
+  state.currentSampleId = CUSTOM_SAMPLE_ID;
+  els.sampleSelect.value = CUSTOM_SAMPLE_ID;
+  els.sourceText.value = text;
+  state.currentSegment = 1;
+  await runAnalysis();
+}
+
+function ensureCustomSampleOption(title) {
+  let option = els.sampleSelect.querySelector(`option[value="${CUSTOM_SAMPLE_ID}"]`);
+  if (!option) {
+    option = document.createElement("option");
+    option.value = CUSTOM_SAMPLE_ID;
+    els.sampleSelect.appendChild(option);
+  }
+  option.textContent = `업로드: ${title || "직접 입력"}`;
+}
+
+function getSample(sampleId) {
+  if (sampleId === CUSTOM_SAMPLE_ID && state.uploadedDocument) return state.uploadedDocument;
+  return SAMPLE_TEXTS.find((sample) => sample.id === sampleId) || SAMPLE_TEXTS[0];
+}
+
+async function runAnalysis(options = {}) {
+  const sample = getSample(state.currentSampleId);
+  const input = {
+    title: sample.title || detectTitle(els.sourceText.value),
     language: "ko",
-    source: SAMPLE_TEXT_URL,
+    source: sample.url,
+    sample,
     text: els.sourceText.value
-  });
+  };
+
+  if (options.forceDynamicSeed || els.analyzerMode.value === "ollama") {
+    state.analysis = await analyzeWithDynamicSeed(input, options.triggerButton || els.analyzeBtn);
+  } else {
+    state.analysis = analyzeNovel(input);
+  }
+
   state.currentSegment = Math.min(state.currentSegment, state.analysis.segments.length || 1);
+  if (options.forceDynamicSeed || els.analyzerMode.value === "ollama") {
+    focusFirstConnectedSegmentIfCurrentMapIsEmpty();
+  }
   renderAll();
+}
+
+function focusFirstConnectedSegmentIfCurrentMapIsEmpty() {
+  const analysis = state.analysis;
+  if (!analysis) return;
+  const currentSegment = analysis.segments[state.currentSegment - 1];
+  const hasCurrentConnections = analysis.events.some((event) =>
+    event.segment_id === currentSegment?.segment_id &&
+    event.status !== STATUS.REJECTED &&
+    (event.characters.length || event.locations.length)
+  );
+  if (hasCurrentConnections) return;
+  const firstConnectedEvent = analysis.events.find((event) =>
+    event.status !== STATUS.REJECTED &&
+    (event.characters.length || event.locations.length)
+  );
+  if (!firstConnectedEvent) return;
+  const segment = analysis.segments.find((item) => item.segment_id === firstConnectedEvent.segment_id);
+  if (segment) state.currentSegment = segment.index;
+}
+
+async function analyzeWithDynamicSeed(input, triggerButton) {
+  const originalLabel = triggerButton.textContent;
+  triggerButton.disabled = true;
+  triggerButton.textContent = "Seed 생성 중";
+  let ollamaPayload = null;
+  let ollamaError = "";
+
+  try {
+    const result = await requestOllamaAnalysis(input.text, els.ollamaModel.value.trim());
+    ollamaPayload = result.analysis;
+    input.seedLexicon = buildDynamicSeedLexicon(ollamaPayload, result.model);
+    input.engine = "ollama-dynamic-seed-ko-adapter";
+    triggerButton.textContent = "분석 중";
+  } catch (error) {
+    ollamaError = `Ollama seed 생성 실패: ${error.message || error}`;
+    input.engine = "pattern-only-ko-adapter";
+  } finally {
+    triggerButton.disabled = false;
+    triggerButton.textContent = originalLabel;
+  }
+
+  let analysis = analyzeNovel(input);
+  if (input.seedLexicon && !analysis.characters.length) {
+    const fallbackInput = { ...input };
+    delete fallbackInput.seedLexicon;
+    fallbackInput.engine = "pattern-fallback-after-empty-dynamic-seed";
+    analysis = analyzeNovel(fallbackInput);
+    analysis.diagnostics.warnings.push("Ollama 동적 seed에서 원문 mention을 찾지 못해 규칙 기반 fallback으로 다시 분석했습니다.");
+  }
+  if (ollamaPayload) applyOllamaPayload(analysis, ollamaPayload, input.seedLexicon.model);
+  if (ollamaError) analysis.diagnostics.warnings.push(ollamaError);
+  return analysis;
+}
+
+async function requestOllamaAnalysis(text, model) {
+  const response = await fetch("/api/analyze/ollama", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, model })
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Ollama analysis failed");
+  return { model: payload.model || model, analysis: payload.analysis || {} };
+}
+
+function buildDynamicSeedLexicon(payload, model) {
+  return {
+    model,
+    method: `ollama-dynamic-seed:${model}`,
+    characters: (payload.characters || []).map((item) => {
+      const name = cleanName(item.name);
+      return {
+        canonical_name: name,
+        aliases: expandAliasCandidates([name, ...listFrom(item.aliases).map(cleanName)]),
+        role: item.role || "인물 후보",
+        description: item.description || "Ollama가 원문에서 추출한 동적 seed입니다.",
+        confidence: clampConfidence(item.confidence, 0.72),
+        method: `ollama-dynamic-seed:${model}`
+      };
+    }).filter((seed) => seed.canonical_name && seed.aliases.length),
+    locations: (payload.locations || []).map((item) => {
+      const name = cleanName(item.name);
+      return {
+        name,
+        aliases: expandAliasCandidates([name, ...listFrom(item.aliases).map(cleanName)]),
+        type: normalizeLocationType(item.type),
+        description: item.description || "Ollama가 원문에서 추출한 동적 seed입니다.",
+        confidence: clampConfidence(item.confidence, 0.72),
+        method: `ollama-dynamic-seed:${model}`
+      };
+    }).filter((seed) => seed.name && seed.aliases.length),
+    eventTypes: (payload.event_types || payload.eventTypes || []).map((item) => {
+      const type = normalizeLexiconId(item.type || item.id || item.label);
+      const label = cleanName(item.label || item.name || item.type);
+      return {
+        type,
+        label: label || type,
+        words: unique(listFrom(item.words).map(cleanName)),
+        description: item.description || "",
+        method: `ollama-dynamic-seed:${model}`
+      };
+    }).filter((entry) => entry.type && entry.words.length),
+    mentalStates: (payload.mental_states || payload.mentalStates || payload.emotions || []).map((item) => {
+      const stateName = cleanName(item.state || item.label || item.name);
+      return {
+        state: stateName,
+        words: unique(listFrom(item.words).map(cleanName)),
+        description: item.description || "",
+        method: `ollama-dynamic-seed:${model}`
+      };
+    }).filter((entry) => entry.state && entry.words.length),
+    physicalStates: (payload.physical_states || payload.physicalStates || []).map((item) => {
+      const stateName = cleanName(item.state || item.label || item.name);
+      return {
+        state: stateName,
+        words: unique(listFrom(item.words).map(cleanName)),
+        description: item.description || "",
+        method: `ollama-dynamic-seed:${model}`
+      };
+    }).filter((entry) => entry.state && entry.words.length)
+  };
+}
+
+function applyOllamaPayload(analysis, payload, model) {
+  const method = `ollama:${model}`;
+
+  (payload.characters || []).forEach((item) => {
+    const name = cleanName(item.name);
+    if (!name) return;
+    const aliases = unique([name, ...(item.aliases || []).map(cleanName)]);
+    const mentions = findMentionsForAliases(analysis.segments, aliases, "character");
+    if (!mentions.length) return;
+
+    let character = findEntityByNames(analysis.characters, aliases, "character");
+    if (!character) {
+      const characterId = makeId("char", analysis.characters.length);
+      mentions.forEach((mention) => {
+        mention.entity_id = characterId;
+        analysis.mentions.push(mention);
+      });
+      analysis.characters.push({
+        character_id: characterId,
+        canonical_name: name,
+        aliases,
+        mentions: [],
+        first_segment_id: mentions[0].segment_id,
+        description: item.description || "Ollama가 원문 근거로 제안한 인물 후보입니다.",
+        role: item.role || "인물 후보",
+        status: STATUS.SUGGESTED,
+        confidence: 0.72,
+        method
+      });
+      return;
+    }
+
+    character.aliases = unique([...(character.aliases || []), ...aliases]);
+    character.description = character.description || item.description || "";
+    character.role = character.role || item.role || "";
+    character.confidence = Math.max(character.confidence || 0, 0.72);
+  });
+
+  (payload.locations || []).forEach((item) => {
+    const name = cleanName(item.name);
+    if (!name) return;
+    const aliases = unique([name, ...(item.aliases || []).map(cleanName)]);
+    const mentions = findMentionsForAliases(analysis.segments, aliases, "location");
+    if (!mentions.length) return;
+
+    let location = findEntityByNames(analysis.locations, aliases, "location");
+    if (!location) {
+      const locationId = makeId("loc", analysis.locations.length);
+      mentions.forEach((mention) => {
+        mention.entity_id = locationId;
+        analysis.mentions.push(mention);
+      });
+      analysis.locations.push({
+        location_id: locationId,
+        name,
+        aliases,
+        mentions: [],
+        first_segment_id: mentions[0].segment_id,
+        type: normalizeLocationType(item.type),
+        parent_name: "",
+        parent_location_id: "",
+        description: item.description || "Ollama가 원문 근거로 제안한 장소 후보입니다.",
+        narrative_coords: null,
+        status: STATUS.SUGGESTED,
+        confidence: 0.72,
+        method
+      });
+      return;
+    }
+
+    location.aliases = unique([...(location.aliases || []), ...aliases]);
+    location.description = location.description || item.description || "";
+    location.confidence = Math.max(location.confidence || 0, 0.72);
+  });
+
+  normalizeMentionReferences(analysis.characters, analysis.locations, analysis.mentions);
+
+  (payload.events || []).forEach((item) => {
+    const summary = summarizeText(item.summary || item.evidence || "", 100);
+    if (!summary) return;
+    const quoteMatch = findQuoteInSegments(analysis.segments, item.evidence || summary);
+    const relatedCharacters = unique((item.characters || [])
+      .map((name) => findEntityByNames(analysis.characters, [cleanName(name)], "character")?.character_id));
+    const relatedLocations = unique((item.locations || [])
+      .map((name) => findEntityByNames(analysis.locations, [cleanName(name)], "location")?.location_id));
+    if (!quoteMatch && !relatedCharacters.length && !relatedLocations.length) return;
+
+    const segment = quoteMatch?.segment || firstRelatedSegment(analysis, relatedCharacters, relatedLocations);
+    if (!segment) return;
+    const span = quoteMatch
+      ? { char_start: quoteMatch.char_start, char_end: quoteMatch.char_end }
+      : { char_start: segment.char_start, char_end: Math.min(segment.char_end, segment.char_start + segment.text.length) };
+
+    const duplicate = analysis.events.some((event) =>
+      event.segment_id === segment.segment_id &&
+      event.summary === summary &&
+      event.method === method
+    );
+    if (duplicate) return;
+
+    analysis.events.push({
+      event_id: makeId("event", analysis.events.length),
+      document_id: analysis.document.document_id,
+      type: normalizeEventType(item.type),
+      summary,
+      segment_id: segment.segment_id,
+      scene_id: segment.scene_id,
+      sentence_index: 0,
+      characters: relatedCharacters,
+      locations: relatedLocations,
+      source_span: span,
+      status: STATUS.SUGGESTED,
+      confidence: clampConfidence(item.confidence, 0.7),
+      method
+    });
+  });
+
+  analysis.states = buildCharacterStates(analysis);
+  analysis.relations = buildRelations(analysis);
+  analysis.diagnostics.ollama = { model, applied: true };
+  analysis.diagnostics.counts = {
+    segments: analysis.segments.length,
+    scenes: analysis.scenes.length,
+    mentions: analysis.mentions.length,
+    characters: analysis.characters.length,
+    locations: analysis.locations.length,
+    events: analysis.events.length,
+    relations: analysis.relations.length
+  };
+}
+
+function findMentionsForAliases(segments, aliases, entityType) {
+  const mentions = [];
+  segments.forEach((segment) => {
+    aliases.forEach((alias) => {
+      if (!alias || alias.length < 2) return;
+      const regex = new RegExp(escapeRegExp(alias), "g");
+      for (const match of segment.text.matchAll(regex)) {
+        mentions.push({
+          mention_id: makeId("mention", mentions.length),
+          entity_type: entityType,
+          entity_id: "",
+          text: match[0],
+          segment_id: segment.segment_id,
+          char_start: segment.char_start + match.index,
+          char_end: segment.char_start + match.index + match[0].length,
+          status: STATUS.SUGGESTED,
+          confidence: 0.72,
+          method: "ollama-evidence"
+        });
+      }
+    });
+  });
+  return mentions.sort((a, b) => a.char_start - b.char_start).slice(0, 30);
+}
+
+function findEntityByNames(entities, names, kind) {
+  const wanted = new Set(names.flatMap((name) => expandAliasCandidates([name])).filter(Boolean));
+  return entities.find((entity) => {
+    const entityNames = kind === "character"
+      ? [entity.canonical_name, ...(entity.aliases || [])]
+      : [entity.name, ...(entity.aliases || [])];
+    return entityNames.some((name) => expandAliasCandidates([name]).some((alias) => wanted.has(alias)));
+  });
+}
+
+function findQuoteInSegments(segments, quote) {
+  const cleaned = String(quote || "").replace(/\s+/g, " ").trim();
+  if (cleaned.length < 4) return null;
+  for (const segment of segments) {
+    const index = segment.text.indexOf(cleaned);
+    if (index >= 0) {
+      return {
+        segment,
+        char_start: segment.char_start + index,
+        char_end: segment.char_start + index + cleaned.length
+      };
+    }
+  }
+  return null;
+}
+
+function firstRelatedSegment(analysis, characterIds, locationIds) {
+  const mention = analysis.mentions.find((item) =>
+    (item.entity_type === "character" && characterIds.includes(item.entity_id)) ||
+    (item.entity_type === "location" && locationIds.includes(item.entity_id))
+  );
+  return mention ? analysis.segments.find((segment) => segment.segment_id === mention.segment_id) : null;
+}
+
+function normalizeEventType(type) {
+  return EVENT_LABELS[type] ? type : normalizeLexiconId(type || "background");
+}
+
+function normalizeLocationType(type) {
+  const allowed = new Set(["residential", "interior", "threshold", "exterior", "public", "symbolic", "inferred"]);
+  return allowed.has(type) ? type : "inferred";
+}
+
+function cleanName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function listFrom(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return value.split(/[,;|]/g).map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function expandAliasCandidates(values) {
+  const aliases = [];
+  values.map(cleanName).filter(Boolean).forEach((value) => {
+    aliases.push(value);
+    aliases.push(stripKoreanParticle(value));
+    aliases.push(value.replace(/\s+/g, ""));
+  });
+  return unique(aliases.filter((alias) => alias.length >= 2));
+}
+
+function stripKoreanParticle(value) {
+  return cleanName(value).replace(/(은|는|이|가|을|를|에게|와|과|도|의|으로|로|에서|에게서|께서|부터|까지|만)$/u, "");
+}
+
+function normalizeLexiconId(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  const ascii = raw.replace(/[^a-z0-9_ -]/g, "").replace(/[\s-]+/g, "_").replace(/^_+|_+$/g, "");
+  if (ascii) return ascii;
+  return `dynamic_${hashString(raw).slice(0, 8)}`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function clampConfidence(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(1, number));
 }
 
 function analyzeNovel(input) {
   const normalized = normalizeText(input.text);
   const document = {
     document_id: "doc_001",
+    sample_id: input.sample?.id || "",
     title: input.title || "Untitled",
+    author: input.sample?.author || "",
+    publication_year: input.sample?.year || "",
     language: input.language || "ko",
     source: input.source || "manual",
+    source_url: input.sample?.source_url || "",
+    rights: input.sample?.rights || "",
     created_at: new Date().toISOString()
   };
 
   const segments = buildSegments(normalized, document.document_id);
   const scenes = buildScenes(segments, document.document_id);
-  const characterPass = extractCharacters(segments);
-  const locationPass = extractLocations(segments);
+  const seedLexicon = input.seedLexicon || null;
+  const characterPass = extractCharacters(segments, document.sample_id, seedLexicon);
+  const locationPass = extractLocations(segments, document.sample_id, seedLexicon);
   const mentions = [...characterPass.mentions, ...locationPass.mentions];
   normalizeMentionReferences(characterPass.characters, locationPass.locations, mentions);
-  const events = extractEvents(segments, characterPass.characters, locationPass.locations, document.document_id);
+  const dynamicLexicon = buildRuntimeLexicon(seedLexicon);
+  const events = extractEvents(segments, characterPass.characters, locationPass.locations, document.document_id, dynamicLexicon);
   const analysis = {
     document,
     segments,
@@ -362,11 +994,28 @@ function analyzeNovel(input) {
     events,
     states: [],
     relations: [],
+    dynamic_lexicon: dynamicLexicon,
     diagnostics: {
-      engine: "rule-based-ko-adapter",
+      engine: input.engine || "rule-based-ko-adapter",
       model_reference: "BookNLP-style schema",
+      seed_lexicon: seedLexicon ? {
+        method: seedLexicon.method,
+        model: seedLexicon.model,
+        characters: seedLexicon.characters.length,
+        locations: seedLexicon.locations.length,
+        event_types: seedLexicon.eventTypes?.length || 0,
+        mental_states: seedLexicon.mentalStates?.length || 0,
+        physical_states: seedLexicon.physicalStates?.length || 0
+      } : {
+        method: "static-sample-seed-or-pattern",
+        model: "",
+        characters: 0,
+        locations: 0
+      },
       warnings: [
-        "현재 엔진은 규칙 기반입니다. 공지시와 은유적 사건은 검수 화면에서 확인해야 합니다."
+        seedLexicon
+          ? "Ollama가 문서별 seed lexicon을 생성했습니다. 모든 항목은 suggested 상태이며 검수 화면에서 확인해야 합니다."
+          : "현재 엔진은 규칙 기반입니다. 공지시와 은유적 사건은 검수 화면에서 확인해야 합니다."
       ],
       counts: {}
     }
@@ -419,6 +1068,13 @@ function detectTitle(text) {
   return normalizeText(text).split(/\n+/)[0]?.trim() || "Untitled";
 }
 
+function titleFromFileName(fileName) {
+  return String(fileName || "")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
 function buildSegments(text, documentId) {
   if (!text) return [];
   const paragraphs = text.split(/\n\s*\n/g).map((part) => part.trim()).filter(Boolean);
@@ -468,11 +1124,17 @@ function buildScenes(segments, documentId) {
   return scenes;
 }
 
-function extractCharacters(segments) {
+function extractCharacters(segments, sampleId, seedLexicon = null) {
   const characters = [];
   const mentions = [];
+  const seedSource = seedLexicon
+    ? seedLexicon.characters
+    : CHARACTER_SEEDS.filter((seed) => seedApplies(seed, sampleId));
+  const locationSeedSource = seedLexicon
+    ? seedLexicon.locations
+    : LOCATION_SEEDS.filter((location) => seedApplies(location, sampleId));
 
-  CHARACTER_SEEDS.forEach((seed) => {
+  seedSource.forEach((seed) => {
     const entityMentions = findSeedMentions(segments, seed.aliases, "character", "");
     if (!entityMentions.length) return;
     const characterId = makeId("char", characters.length);
@@ -490,13 +1152,13 @@ function extractCharacters(segments) {
       description: seed.description,
       role: seed.role,
       status: STATUS.SUGGESTED,
-      confidence: 0.88,
-      method: "seed-lexicon"
+      confidence: seed.confidence || 0.88,
+      method: seed.method || "seed-lexicon"
     });
   });
 
   const existingAliases = new Set(characters.flatMap((character) => character.aliases));
-  const locationAliases = new Set(LOCATION_SEEDS.flatMap((location) => location.aliases));
+  const locationAliases = new Set(locationSeedSource.flatMap((location) => location.aliases));
   const stopNames = new Set(["나는", "내가", "아내", "방안", "대문", "거리", "사람", "생활", "생각", "여인", "원문", "가구", "그들", "이것", "그것"]);
   const candidates = new Map();
   const pattern = /([가-힣]{2,5})(?:은|는|이|가|을|를|에게|와|과|도|의)\b/g;
@@ -544,11 +1206,14 @@ function extractCharacters(segments) {
   return { characters, mentions };
 }
 
-function extractLocations(segments) {
+function extractLocations(segments, sampleId, seedLexicon = null) {
   const locations = [];
   const mentions = [];
+  const seedSource = seedLexicon
+    ? seedLexicon.locations
+    : LOCATION_SEEDS.filter((seed) => seedApplies(seed, sampleId));
 
-  LOCATION_SEEDS.forEach((seed) => {
+  seedSource.forEach((seed) => {
     const entityMentions = findSeedMentions(segments, seed.aliases, "location", "");
     if (!entityMentions.length) return;
     const locationId = makeId("loc", locations.length);
@@ -569,8 +1234,8 @@ function extractLocations(segments) {
       description: seed.description,
       narrative_coords: seed.narrative_coords || null,
       status: STATUS.SUGGESTED,
-      confidence: 0.86,
-      method: "seed-lexicon"
+      confidence: seed.confidence || 0.86,
+      method: seed.method || "seed-lexicon"
     });
   });
 
@@ -630,6 +1295,37 @@ function extractLocations(segments) {
   return { locations, mentions };
 }
 
+function seedApplies(seed, sampleId) {
+  if (sampleId === CUSTOM_SAMPLE_ID) return false;
+  return !seed.sampleIds || seed.sampleIds.includes(sampleId);
+}
+
+function buildRuntimeLexicon(seedLexicon) {
+  const eventTypes = seedLexicon?.eventTypes?.length
+    ? seedLexicon.eventTypes
+    : EVENT_LEXICON.map((entry) => ({
+      type: entry.type,
+      label: EVENT_LABELS[entry.type] || entry.type,
+      words: entry.words,
+      method: "static-event-lexicon"
+    }));
+  const mentalStates = seedLexicon?.mentalStates?.length
+    ? seedLexicon.mentalStates
+    : MENTAL_STATE_LEXICON.map((entry) => ({
+      state: entry.state,
+      words: entry.words,
+      method: "static-mental-state-lexicon"
+    }));
+  const physicalStates = seedLexicon?.physicalStates?.length
+    ? seedLexicon.physicalStates
+    : [
+      { state: "누워 있거나 잠든 상태", words: ["잠", "눕", "이불", "낮잠"], method: "static-physical-state-lexicon" },
+      { state: "이동 중", words: ["외출", "나가", "돌아오"], method: "static-physical-state-lexicon" },
+      { state: "피로", words: ["피곤", "아프", "쓰라리"], method: "static-physical-state-lexicon" }
+    ];
+  return { eventTypes, mentalStates, physicalStates };
+}
+
 function findSeedMentions(segments, aliases, entityType, entityId) {
   const mentions = [];
   segments.forEach((segment) => {
@@ -655,11 +1351,11 @@ function findSeedMentions(segments, aliases, entityType, entityId) {
   return mentions.sort((a, b) => a.char_start - b.char_start);
 }
 
-function extractEvents(segments, characters, locations, documentId) {
+function extractEvents(segments, characters, locations, documentId, dynamicLexicon = buildRuntimeLexicon(null)) {
   const events = [];
   segments.forEach((segment) => {
     splitSentences(segment.text).forEach((sentence, sentenceIndex) => {
-      const type = inferEventType(sentence.text);
+      const type = inferEventType(sentence.text, dynamicLexicon);
       const characterIds = characters
         .filter((character) => character.status !== STATUS.REJECTED && includesAny(sentence.text, character.aliases))
         .map((character) => character.character_id);
@@ -713,8 +1409,9 @@ function splitSentences(text) {
   return results.length ? results : [{ text, start: 0, end: text.length }];
 }
 
-function inferEventType(sentence) {
-  const hit = EVENT_LEXICON
+function inferEventType(sentence, dynamicLexicon = buildRuntimeLexicon(null)) {
+  const lexicon = dynamicLexicon || buildRuntimeLexicon(null);
+  const hit = lexicon.eventTypes
     .map((entry) => ({ type: entry.type, score: entry.words.filter((word) => sentence.includes(word)).length }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)[0];
@@ -746,8 +1443,8 @@ function buildCharacterStates(analysis) {
 
       const explicitLocation = segmentEvents.flatMap((event) => event.locations)[0];
       if (explicitLocation) currentLocationId = explicitLocation;
-      mentalState = inferMentalState(segment.text, mentalState);
-      physicalState = inferPhysicalState(segment.text, physicalState);
+      mentalState = inferMentalState(segment.text, mentalState, analysis.dynamic_lexicon);
+      physicalState = inferPhysicalState(segment.text, physicalState, analysis.dynamic_lexicon);
       knownFacts.push(...segmentEvents.map((event) => event.summary));
 
       states.push({
@@ -766,15 +1463,16 @@ function buildCharacterStates(analysis) {
   return states;
 }
 
-function inferMentalState(text, fallback) {
-  const hit = MENTAL_STATE_LEXICON.find((entry) => entry.words.some((word) => text.includes(word)));
+function inferMentalState(text, fallback, dynamicLexicon = buildRuntimeLexicon(null)) {
+  const lexicon = dynamicLexicon || buildRuntimeLexicon(null);
+  const hit = lexicon.mentalStates.find((entry) => entry.words.some((word) => text.includes(word)));
   return hit?.state || fallback || "미정";
 }
 
-function inferPhysicalState(text, fallback) {
-  if (includesAny(text, ["잠", "눕", "이불", "낮잠"])) return "누워 있거나 잠든 상태";
-  if (includesAny(text, ["외출", "나가", "돌아오"])) return "이동 중";
-  if (includesAny(text, ["피곤", "아프", "쓰라리"])) return "피로";
+function inferPhysicalState(text, fallback, dynamicLexicon = buildRuntimeLexicon(null)) {
+  const lexicon = dynamicLexicon || buildRuntimeLexicon(null);
+  const hit = lexicon.physicalStates.find((entry) => entry.words.some((word) => text.includes(word)));
+  if (hit) return hit.state;
   return fallback || "";
 }
 
@@ -904,7 +1602,24 @@ function highlightSourceSegment(segment) {
 function renderFilterOptions() {
   const analysis = state.analysis;
   if (!analysis) return;
-  const previous = state.filters.entity;
+  const previousEntity = state.filters.entity;
+  const previousEventType = state.filters.eventType;
+  const eventTypes = unique([
+    ...(analysis.dynamic_lexicon?.eventTypes || []).map((entry) => entry.type),
+    ...analysis.events.map((event) => event.type)
+  ]);
+
+  els.eventTypeFilter.innerHTML = [
+    `<option value="all">전체</option>`,
+    ...eventTypes.map((type) => `<option value="${escapeAttr(type)}">${escapeHtml(eventTypeLabel(type))}</option>`)
+  ].join("");
+
+  if (Array.from(els.eventTypeFilter.options).some((option) => option.value === previousEventType)) {
+    els.eventTypeFilter.value = previousEventType;
+  } else {
+    state.filters.eventType = "all";
+  }
+
   const visibleOptions = [
     `<option value="all">전체</option>`,
     ...analysis.characters
@@ -915,8 +1630,8 @@ function renderFilterOptions() {
       .map((location) => `<option value="location:${location.location_id}">장소 · ${escapeHtml(location.name)}</option>`)
   ];
   els.entityFilter.innerHTML = visibleOptions.join("");
-  if (Array.from(els.entityFilter.options).some((option) => option.value === previous)) {
-    els.entityFilter.value = previous;
+  if (Array.from(els.entityFilter.options).some((option) => option.value === previousEntity)) {
+    els.entityFilter.value = previousEntity;
   } else {
     state.filters.entity = "all";
   }
@@ -992,7 +1707,7 @@ function buildVisibleGraphNodes(edges) {
     if (nodes.has(id)) return;
     const entity = getEntity(kind, rawId);
     if (!entity || entity.status === STATUS.REJECTED) return;
-    const label = entity.canonical_name || entity.name || EVENT_LABELS[entity.type] || entity.summary || rawId;
+    const label = entity.canonical_name || entity.name || eventTypeLabel(entity.type) || entity.summary || rawId;
     const caption = kind === "event"
       ? entity.event_id
       : kind === "character"
@@ -1187,7 +1902,7 @@ function renderMapEventPanel(selection = null) {
       ${events.map((event) => `
         <article class="inspector-event">
           <div class="tag-row">
-            <span class="tag event">${EVENT_LABELS[event.type] || event.type}</span>
+            <span class="tag event">${eventTypeLabel(event.type)}</span>
             ${event.characters.map((id) => `<span class="tag">${escapeHtml(nameOf("character", id))}</span>`).join("")}
             ${event.locations.map((id) => `<span class="tag">${escapeHtml(nameOf("location", id))}</span>`).join("")}
           </div>
@@ -1218,7 +1933,7 @@ function renderTimeline() {
       </div>
       <div class="timeline-content">
         <div class="tag-row">
-          <span class="tag event">${EVENT_LABELS[event.type] || event.type}</span>
+          <span class="tag event">${eventTypeLabel(event.type)}</span>
           <span class="status-pill ${statusClass(event.status)}">${STATUS_LABELS[event.status]}</span>
           ${event.characters.map((id) => `<button type="button" class="chip" data-select-kind="character" data-select-id="${id}">${escapeHtml(nameOf("character", id))}</button>`).join("")}
           ${event.locations.map((id) => `<button type="button" class="chip location" data-select-kind="location" data-select-id="${id}">${escapeHtml(nameOf("location", id))}</button>`).join("")}
@@ -1389,7 +2104,7 @@ function relationLabelForEvent(type) {
   if (type === "movement") return "동행/이동";
   if (type === "perception") return "관찰";
   if (type === "realization") return "인식 변화";
-  return EVENT_LABELS[type] || "연결";
+  return eventTypeLabel(type) || "연결";
 }
 
 function characterSpatialPath(characterId) {
@@ -1504,7 +2219,7 @@ function renderCharacterEventItem(event) {
   return `
     <article class="character-event-item">
       <div class="tag-row">
-        <span class="tag event">${EVENT_LABELS[event.type] || event.type}</span>
+        <span class="tag event">${eventTypeLabel(event.type)}</span>
         <button type="button" class="link-button" data-focus-segment="${escapeAttr(event.segment_id)}">${escapeHtml(segmentLabel(event.segment_id))}</button>
       </div>
       <p>${escapeHtml(event.summary)}</p>
@@ -1587,7 +2302,7 @@ function renderHighlightedSegment(segment) {
         start: event.source_span.char_start - segment.char_start,
         end: event.source_span.char_end - segment.char_start,
         className: "event",
-        label: EVENT_LABELS[event.type] || event.type
+        label: eventTypeLabel(event.type)
       });
     });
 
@@ -1705,7 +2420,7 @@ function toMarkdown(payload) {
   });
   lines.push("", "## Events", "");
   payload.events.forEach((event) => {
-    lines.push(`- **${event.event_id}** [${EVENT_LABELS[event.type]}] ${event.summary}`);
+    lines.push(`- **${event.event_id}** [${eventTypeLabel(event.type)}] ${event.summary}`);
   });
   return lines.join("\n");
 }
@@ -1723,10 +2438,10 @@ function toTimelineJs(payload) {
       return {
         start_date: { year: "1", month: "1", day: String(segment?.index || 1) },
         text: {
-          headline: `${event.event_id} · ${EVENT_LABELS[event.type] || event.type}`,
+          headline: `${event.event_id} · ${eventTypeLabel(event.type)}`,
           text: `${escapeHtml(event.summary)}<br><small>${escapeHtml(sourceTextForSpan(event.source_span))}</small>`
         },
-        group: EVENT_LABELS[event.type] || event.type
+        group: eventTypeLabel(event.type)
       };
     })
   };
@@ -1869,7 +2584,7 @@ function focusSegment(segmentId) {
 function renderMiniEvent(event) {
   return `
     <article class="mini-event">
-      <span class="tag event">${EVENT_LABELS[event.type] || event.type}</span>
+      <span class="tag event">${eventTypeLabel(event.type)}</span>
       <p>${escapeHtml(event.summary)}</p>
     </article>
   `;
@@ -1888,6 +2603,11 @@ function statusMatches(status) {
 
 function statusClass(status) {
   return `status-${status || STATUS.SUGGESTED}`;
+}
+
+function eventTypeLabel(type) {
+  const dynamic = state.analysis?.dynamic_lexicon?.eventTypes?.find((entry) => entry.type === type);
+  return dynamic?.label || EVENT_LABELS[type] || type || "사건";
 }
 
 function matchesEntityFilter(kind, id) {

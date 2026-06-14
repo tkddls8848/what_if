@@ -6,6 +6,8 @@ This document defines the app objects, events, derived views, and UI components 
 
 The current app is a browser-first MVP. It uses a rule-based Korean adapter, but all output should follow the same schema so the analyzer can later be replaced by a BookNLP-style, Korean NLP, LLM, or server-side adapter.
 
+The app can also call a local Ollama adapter through `server.js`. This path is optional and intended for small local models in the 4b-7b range. Recommended defaults are `qwen3.5:4b`, `gemma4:e4b`, `gemma3:4b`, and `qwen3:4b`. In Ollama mode, the model first creates a document-local seed lexicon for characters, locations, event types, mental/emotional states, and physical states. The app then recalculates mentions, events, states, relations, and browser filter options from that dynamic seed lexicon. Ollama output is treated as suggested data and merged only when source evidence can be tied back to the document text.
+
 ## 1. Design Principles
 
 ### 1.1 Source Evidence First
@@ -76,8 +78,12 @@ Represents one source text.
 {
   "document_id": "doc_001",
   "title": "날개",
+  "author": "이상",
+  "publication_year": "1936",
   "language": "ko",
   "source": "texts/wings.txt",
+  "source_url": "https://www.davincimap.co.kr/davBase/Source/davSource.jsp?Job=Body&SourID=SOUR001427",
+  "rights": "public-domain-candidate",
   "created_at": "2026-06-14T00:00:00.000Z"
 }
 ```
@@ -85,8 +91,12 @@ Represents one source text.
 Field notes:
 
 - `document_id`: stable id inside one analysis result
+- `author`: optional author display and export metadata
+- `publication_year`: optional original publication year
 - `language`: ISO-style language code
-- `source`: file path, URL, or `"manual"`
+- `source`: file path, upload marker, URL, or `"manual"`
+- `source_url`: optional canonical source URL for bundled samples
+- `rights`: optional rights note such as `"public-domain-old-70"` or `"user-provided"`
 - `created_at`: analysis creation time
 
 ### 2.2 Segment
@@ -527,9 +537,11 @@ Note: Graph export may include event nodes because it reflects the full schema r
 
 Responsibilities:
 
-- sample text load
+- bundled sample selection
+- user text file upload
 - analysis schema construction
 - rule-based extraction
+- Ollama dynamic seed lexicon extraction
 - review status updates
 - derived view helpers
 - Reader, Map, Timeline, Characters, Review, Export rendering
@@ -580,7 +592,16 @@ Styling:
 
 ### 5.4 `server.js`
 
-Express static server. It only serves files.
+Express static server and local analyzer proxy.
+
+Responsibilities:
+
+- serve app files and bundled sample texts
+- `POST /api/analyze/ollama`
+- proxy local Ollama requests to `http://127.0.0.1:11434`
+- reject model tags outside the 4b-7b range
+- expose installed 4b-7b completion models through `GET /api/ollama/models`
+- return structured JSON containing `characters`, `locations`, `event_types`, `mental_states`, `physical_states`, and `events` for schema merge in `app.js`
 
 ## 6. Adjustment From Old Component Plan
 

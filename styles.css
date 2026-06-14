@@ -211,6 +211,38 @@ select {
   gap: 8px;
 }
 
+.sample-picker,
+.analyzer-picker,
+.model-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sample-picker select,
+.analyzer-picker select,
+.model-picker select {
+  min-width: 150px;
+  height: 28px;
+  border-color: transparent;
+  background: var(--surface-2);
+}
+
+.analyzer-picker select {
+  min-width: 96px;
+}
+
+.model-picker select {
+  min-width: 128px;
+}
+
 .workspace {
   flex: 1;
   display: grid;

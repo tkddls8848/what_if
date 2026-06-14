@@ -14,10 +14,36 @@
           <p>소설 원문 기반 인물, 장소, 사건, 상태 변화 분석과 검수</p>
         </div>
         <div class="topbar-actions" aria-label="문서 작업">
-          <button id="loadSampleBtn" type="button">샘플</button>
-          <button id="analyzeBtn" type="button" class="primary">분석</button>
-          <button id="saveSnapshotBtn" type="button">저장</button>
-          <button id="loadSnapshotBtn" type="button">복원</button>
+          <label class="sample-picker" for="sampleSelect">
+            <span>샘플</span>
+            <select id="sampleSelect">
+              <option value="wings">날개 - 이상</option>
+              <option value="gamja">감자 - 김동인</option>
+            </select>
+          </label>
+          <button id="loadSampleBtn" type="button">샘플 불러오기</button>
+          <input id="textFileInput" type="file" accept=".txt,text/plain" hidden>
+          <button id="uploadTextBtn" type="button">TXT 업로드</button>
+          <label class="analyzer-picker" for="analyzerMode">
+            <span>분석 방식</span>
+            <select id="analyzerMode">
+              <option value="rule">규칙 분석</option>
+              <option value="ollama">LLM Seed 분석</option>
+            </select>
+          </label>
+          <label class="model-picker" for="ollamaModel">
+            <span>모델</span>
+            <select id="ollamaModel" aria-label="Ollama 모델 선택">
+              <option value="qwen3.5:4b">qwen3.5:4b</option>
+              <option value="gemma4:e4b">gemma4:e4b</option>
+              <option value="gemma3:4b">gemma3:4b</option>
+              <option value="qwen3:4b">qwen3:4b</option>
+            </select>
+          </label>
+          <button id="generateSeedBtn" type="button">LLM Seed 생성</button>
+          <button id="analyzeBtn" type="button" class="primary">선택 방식으로 분석</button>
+          <button id="saveSnapshotBtn" type="button">분석 저장</button>
+          <button id="loadSnapshotBtn" type="button">저장본 복원</button>
         </div>
       </header>
 
