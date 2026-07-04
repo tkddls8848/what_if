@@ -25,6 +25,70 @@ import {
   CUSTOM_SAMPLE_ID
 } from "./config.js";
 
+const CHARACTER_PARTICLES = [
+  "에게서는", "한테서는", "에게서", "한테서", "께서는", "께서", "에게", "한테",
+  "은", "는", "이", "가", "을", "를", "와", "과", "도", "의"
+];
+const CHARACTER_SUBJECT_PARTICLES = new Set(["에게서는", "한테서는", "에게서", "한테서", "께서는", "께서", "에게", "한테", "은", "는", "이", "가", "와", "과"]);
+const LOCATION_PARTICLES = ["에서부터", "으로부터", "에서는", "에서도", "까지", "부터", "에서", "으로", "에는", "에도", "에", "로", "을", "를", "은", "는", "이", "가", "와", "과", "의", "도"];
+const LOCATIVE_PARTICLES = new Set(["에서부터", "으로부터", "에서는", "에서도", "까지", "부터", "에서", "으로", "에는", "에도", "에", "로"]);
+const HUMAN_REFERENCE_NAMES = new Set([
+  "나", "너", "우리", "그녀", "그분", "이분", "저분", "마나님", "아내", "남편", "어머니", "아버지", "엄마", "아빠",
+  "할머니", "할아버지", "형", "누나", "언니", "오빠", "동생", "아들", "딸", "부처", "부부", "장인", "장모", "시어머니",
+  "선생", "선생님", "사장", "사장님", "감독", "의사", "경찰", "주인", "손님", "서방", "영감", "색시", "신부", "신랑",
+  "아이", "소년", "소녀", "여자", "남자", "여인", "여편네", "사내", "노인", "청년", "아가씨", "아주머니", "아저씨"
+]);
+const NON_PERSON_NAMES = new Set([
+  "모양", "조밥", "마음", "생각", "생활", "시간", "오늘", "어제", "내일", "얼굴", "머리", "소리", "웃음", "그림자",
+  "세상", "신용", "동정", "돈벌이", "품삯", "비결", "사흘", "가을", "바구니", "활극", "원문", "사건", "장소", "상태",
+  "송충이", "송충", "빈민굴", "방안", "대문", "거리", "집", "길", "사람", "그것", "이것", "저것", "무엇", "어디", "누구"
+]);
+const LOCATION_EXACT_NAMES = new Set([
+  "방", "집", "거리", "길", "옥상", "시장", "골목", "마당", "학교", "병원", "정거장", "백화점", "도시", "마을",
+  "강", "산", "바다", "숲", "밭", "부엌", "창고", "가게", "주막", "다방", "호텔", "여관", "궁", "성", "빈민굴", "묘지"
+]);
+const LOCATION_STOP_NAMES = new Set(["불길", "시집", "계집", "고집", "편집", "모집", "수집", "징역", "기억", "능력", "세력", "매력", "가능성", "특성", "여성", "남성", "방송", "서방"]);
+const LOCATION_SUFFIX_RE = /(정거장|백화점|공동묘지|빈민굴|옥상|시장|골목|마당|학교|병원|도시|마을|바다|부엌|창고|가게|주막|다방|호텔|여관|묘지|거리|방|집|길|문|역|강|산|숲|밭|궁|성)$/u;
+const PERSON_ACTION_RE = /(말하|말했|대답|묻|물었|부르|불렀|가(?:고|서|며|려|았다|겠)|오(?:고|며|았다|겠)|나가|들어오|돌아오|걷|앉|일어나|웃|울|보(?:고|았|며)|먹|마시|주(?:고|었)|받|만나|생각하|느끼|죽|살|일하|잠들|깨)/u;
+const MOVEMENT_CONTEXT_RE = /(가(?:고|서|며|다가|았다)|오(?:고|며|다가|았다)|나가|들어오|돌아오|걷|건너|지나|따라|오르|내리|도착|떠나)/u;
+
+function splitTrailingParticle(word, particles) {
+  for (const particle of particles) {
+    if (word.length > particle.length && word.endsWith(particle)) {
+      return { base: word.slice(0, -particle.length), particle };
+    }
+  }
+  return { base: word, particle: "" };
+}
+
+function isHumanReference(name) {
+  return HUMAN_REFERENCE_NAMES.has(name) || /(?:님|씨|서방|부인|아내|남편|어머니|아버지|할머니|할아버지|선생|사장|감독|의사|경찰|주인|손님|영감|색시|신부|신랑|아이|소년|소녀|여인|여편네|사내|노인|청년|아가씨|아주머니|아저씨|사람들|여인들|인들|녀)$/u.test(name);
+}
+
+function isRejectedCharacterName(name) {
+  return !name || NON_PERSON_NAMES.has(name) || LOCATION_SUFFIX_RE.test(name) || /(?:없이|듯이|까지|부터|에서|으로|하고|하며|하게|적인|스럽게)$/u.test(name);
+}
+
+function followingClause(text, end, limit = 64) {
+  return text.slice(end, end + limit).split(/[.!?…。！？\n]/u, 1)[0];
+}
+
+function hasPersonActionContext(text, end) {
+  return PERSON_ACTION_RE.test(followingClause(text, end));
+}
+
+function locationEvidence(name, suffix, particle, following) {
+  if (LOCATION_STOP_NAMES.has(name) || isHumanReference(name) || /[어아]가게$/u.test(name)) return false;
+  if (LOCATIVE_PARTICLES.has(particle)) return true;
+  if (/^\s*(?:밖|안|앞|뒤|옆|근처)\b/u.test(following)) return true;
+  if ((particle === "을" || particle === "를") && MOVEMENT_CONTEXT_RE.test(following)) return true;
+  if (LOCATION_EXACT_NAMES.has(name)) return false;
+  const prefixLength = name.length - suffix.length;
+  if (["길", "문", "역", "방", "집"].includes(suffix)) return prefixLength >= 2;
+  if (["강", "산", "숲", "밭", "궁", "성"].includes(suffix)) return false;
+  return prefixLength >= 1;
+}
+
 export function buildDynamicSeedLexicon(payload, model) {
   const eventCharacterSeeds = collectPayloadEventNames(payload, "characters").map((name) => ({
     name,
@@ -877,65 +941,80 @@ function buildDocumentSeedLexicon(segments, model = "browser") {
 }
 
 function buildDocumentCharacterSeeds(segments, fullText, method) {
-  const stopNames = new Set([
-    "나는", "내가", "나를", "우리", "그들", "그것", "이것", "저것", "사람", "생활", "생각", "원문",
-    "장소", "사건", "마음", "시간", "오늘", "어제", "내일", "모두", "무엇", "어디", "누구"
-  ]);
   const counts = new Map();
 
-  const addName = (name, count = 1) => {
-    const cleaned = stripKoreanParticle(name);
-    if (cleaned.length < 2 || cleaned.length > 8 || stopNames.has(cleaned)) return;
-    counts.set(cleaned, (counts.get(cleaned) || 0) + count);
+  const addName = (name, particle, segmentId, actorContext = false, explicitHuman = false, count = 1) => {
+    const cleaned = cleanName(name);
+    if ((!explicitHuman && (cleaned.length < 2 || cleaned.length > 4)) || cleaned.length > 12 || (!explicitHuman && isRejectedCharacterName(cleaned))) return;
+    const item = counts.get(cleaned) || { count: 0, actorContexts: 0, particles: new Set(), segmentIds: new Set(), explicitHuman: false };
+    item.count += count;
+    if (actorContext) item.actorContexts += 1;
+    if (particle) item.particles.add(particle);
+    if (segmentId) item.segmentIds.add(segmentId);
+    item.explicitHuman ||= explicitHuman;
+    counts.set(cleaned, item);
   };
 
   if (/(^|[^가-힣])(나|내가|나는|나를|나의)([^가-힣]|$)/.test(fullText)) {
-    addName("나", 3);
+    addName("나", "", "", true, true, 3);
   }
 
-  // Korean-aware boundary: the particle must NOT be followed by another Hangul syllable
-  // (which would mean it is mid-word, e.g. the 의 in "의자"). `\b` does not work here
-  // because Korean particle chars are not \w, so `\b` never holds after them.
-  const particlePattern = /([가-힣]{2,8})(?:은|는|이|가|을|를|에게|와|과|도|의|께서|에게서)(?![가-힣])/g;
   segments.forEach((segment) => {
-    for (const match of segment.text.matchAll(particlePattern)) addName(match[1]);
+    for (const match of segment.text.matchAll(/[가-힣]+/gu)) {
+      const { base, particle } = splitTrailingParticle(match[0], CHARACTER_PARTICLES);
+      if (!particle) continue;
+      const explicitHuman = isHumanReference(base);
+      if (!explicitHuman && !CHARACTER_SUBJECT_PARTICLES.has(particle)) continue;
+      addName(
+        base,
+        particle,
+        segment.segment_id,
+        hasPersonActionContext(segment.text, match.index + match[0].length),
+        explicitHuman
+      );
+    }
   });
 
   return Array.from(counts.entries())
-    .filter(([, count]) => count >= 2)
-    .sort((a, b) => b[1] - a[1])
+    .filter(([, item]) => item.explicitHuman || (item.count >= 2 && item.actorContexts >= 1 && item.segmentIds.size >= 1))
+    .sort((a, b) => Number(b[1].explicitHuman) - Number(a[1].explicitHuman) || b[1].count - a[1].count)
     .slice(0, 14)
-    .map(([name, count]) => ({
+    .map(([name, item]) => ({
       canonical_name: name,
       aliases: expandAliasCandidates([name, ...koreanCaseAliases(name)]),
       role: name === "나" ? "화자 후보" : "인물 후보",
-      description: `문서 반복 출현 패턴으로 생성한 인물 seed입니다. 감지 ${count}회.`,
-      confidence: name === "나" ? 0.68 : 0.5,
+      description: `인물 지칭어와 행위 문맥으로 생성한 인물 seed입니다. 감지 ${item.count}회.`,
+      confidence: name === "나" ? 0.68 : item.explicitHuman ? 0.62 : 0.54,
       method
     }));
 }
 
 function buildDocumentLocationSeeds(segments, method) {
   const counts = new Map();
-  const pattern = /([가-힣A-Za-z0-9 ]{1,14}(?:방|집|거리|길|문|역|옥상|시장|골목|마당|학교|병원|정거장|백화점|도시|마을|강|산|바다|숲|들|밭|부엌|창고|가게|주막|다방|호텔|여관|궁|성))/g;
   segments.forEach((segment) => {
-    for (const match of segment.text.matchAll(pattern)) {
-      const name = cleanName(match[1]);
-      if (name.length < 2 || name.length > 14) continue;
-      counts.set(name, (counts.get(name) || 0) + 1);
+    for (const match of segment.text.matchAll(/[가-힣A-Za-z0-9]+/gu)) {
+      const { base: name, particle } = splitTrailingParticle(match[0], LOCATION_PARTICLES);
+      const suffix = name.match(LOCATION_SUFFIX_RE)?.[1] || "";
+      if (!suffix || name.length > 14) continue;
+      const following = followingClause(segment.text, match.index + match[0].length);
+      if (!locationEvidence(name, suffix, particle, following)) continue;
+      const item = counts.get(name) || { count: 0, particles: new Set(), segmentIds: new Set() };
+      item.count += 1;
+      if (particle) item.particles.add(particle);
+      item.segmentIds.add(segment.segment_id);
+      counts.set(name, item);
     }
   });
 
   return Array.from(counts.entries())
-    .filter(([, count]) => count >= 1)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 14)
-    .map(([name, count]) => ({
+    .map(([name, item]) => ({
       name,
-      aliases: expandAliasCandidates([name]),
+      aliases: expandAliasCandidates([name, ...LOCATION_PARTICLES.map((particle) => `${name}${particle}`)]),
       type: inferLocationTypeFromName(name),
-      description: `장소 접미사 패턴으로 생성한 장소 seed입니다. 감지 ${count}회.`,
-      confidence: count > 1 ? 0.56 : 0.44,
+      description: `장소 핵심 명사와 공간 문맥으로 생성한 장소 seed입니다. 감지 ${item.count}회.`,
+      confidence: item.count > 1 ? 0.62 : 0.52,
       method
     }));
 }
@@ -1022,6 +1101,8 @@ function mergeLexiconEntries(...args) {
 }
 
 function koreanCaseAliases(name) {
+  if (name === "나") return ["나는", "내가", "나를", "나에게", "나의", "나와", "나도"];
+  if (name === "너") return ["너는", "네가", "너를", "너에게", "너의", "너와", "너도"];
   return ["은", "는", "이", "가", "을", "를", "에게", "의", "와", "과"].map((particle) => `${name}${particle}`);
 }
 
@@ -1116,9 +1197,6 @@ function extractCharacters(segments, sampleId, seedLexicon = null) {
   const seedSource = seedLexicon
     ? seedLexicon.characters
     : CHARACTER_SEEDS.filter((seed) => seedApplies(seed, sampleId));
-  const locationSeedSource = seedLexicon
-    ? seedLexicon.locations
-    : LOCATION_SEEDS.filter((location) => seedApplies(location, sampleId));
 
   seedSource.forEach((seed) => {
     const entityMentions = findSeedMentions(segments, seed.aliases, "character", "");
@@ -1140,55 +1218,6 @@ function extractCharacters(segments, sampleId, seedLexicon = null) {
       status: STATUS.SUGGESTED,
       confidence: seed.confidence || 0.88,
       method: seed.method || "seed-lexicon"
-    });
-  });
-
-  // Authoritative LLM seed: trust its character list only, skip the noisy particle pass.
-  if (seedLexicon?.authoritative) return { characters, mentions };
-
-  const existingAliases = new Set(characters.flatMap((character) => character.aliases));
-  const locationAliases = new Set(locationSeedSource.flatMap((location) => location.aliases));
-  const stopNames = new Set(["나는", "내가", "아내", "방안", "대문", "거리", "사람", "생활", "생각", "여인", "원문", "가구", "그들", "이것", "그것"]);
-  const candidates = new Map();
-  const pattern = /([가-힣]{2,5})(?:은|는|이|가|을|를|에게|와|과|도|의)(?![가-힣])/g;
-
-  segments.forEach((segment) => {
-    for (const match of segment.text.matchAll(pattern)) {
-      const name = match[1];
-      if (stopNames.has(name) || existingAliases.has(name) || locationAliases.has(name)) continue;
-      if (!candidates.has(name)) candidates.set(name, []);
-      candidates.get(name).push({
-        text: name,
-        segment_id: segment.segment_id,
-        char_start: segment.char_start + match.index,
-        char_end: segment.char_start + match.index + name.length
-      });
-    }
-  });
-
-  candidates.forEach((candidateMentions, name) => {
-    if (candidateMentions.length < 2) return;
-    const characterId = makeId("char", characters.length);
-    candidateMentions.slice(0, 20).forEach((mention) => {
-      mention.mention_id = makeId("mention", mentions.length);
-      mention.entity_type = "character";
-      mention.entity_id = characterId;
-      mention.status = STATUS.SUGGESTED;
-      mention.confidence = 0.48;
-      mention.method = "korean-particle-pattern";
-      mentions.push(mention);
-    });
-    characters.push({
-      character_id: characterId,
-      canonical_name: name,
-      aliases: [name],
-      mentions: candidateMentions.slice(0, 20).map((mention) => mention.mention_id),
-      first_segment_id: candidateMentions[0].segment_id,
-      description: "조사 패턴으로 발견된 인물 후보입니다.",
-      role: "인물 후보",
-      status: STATUS.SUGGESTED,
-      confidence: 0.48,
-      method: "korean-particle-pattern"
     });
   });
 
@@ -1234,56 +1263,6 @@ function extractLocations(segments, sampleId, seedLexicon = null) {
     location.parent_location_id = parent?.location_id || "";
   });
 
-  // Authoritative LLM seed: trust its location list only, skip the suffix-pattern pass.
-  if (seedLexicon?.authoritative) return { locations, mentions };
-
-  const existingAliases = new Set(locations.flatMap((location) => location.aliases));
-  const candidates = new Map();
-  const pattern = /([가-힣A-Za-z0-9 ]{1,12}(?:방|집|거리|길|문|역|옥상|시장|골목|마당|학교|병원|정거장|백화점|도시|마을))/g;
-
-  segments.forEach((segment) => {
-    for (const match of segment.text.matchAll(pattern)) {
-      const name = match[1].trim();
-      if (name.length < 2 || existingAliases.has(name)) continue;
-      if (!candidates.has(name)) candidates.set(name, []);
-      candidates.get(name).push({
-        text: name,
-        segment_id: segment.segment_id,
-        char_start: segment.char_start + match.index,
-        char_end: segment.char_start + match.index + name.length
-      });
-    }
-  });
-
-  candidates.forEach((candidateMentions, name) => {
-    if (candidateMentions.length < 2) return;
-    const locationId = makeId("loc", locations.length);
-    candidateMentions.slice(0, 20).forEach((mention) => {
-      mention.mention_id = makeId("mention", mentions.length);
-      mention.entity_type = "location";
-      mention.entity_id = locationId;
-      mention.status = STATUS.SUGGESTED;
-      mention.confidence = 0.5;
-      mention.method = "location-suffix-pattern";
-      mentions.push(mention);
-    });
-    locations.push({
-      location_id: locationId,
-      name,
-      aliases: [name],
-      mentions: candidateMentions.slice(0, 20).map((mention) => mention.mention_id),
-      first_segment_id: candidateMentions[0].segment_id,
-      type: "inferred",
-      parent_name: "",
-      parent_location_id: "",
-      description: "장소 접미사 패턴으로 발견된 장소 후보입니다.",
-      narrative_coords: null,
-      status: STATUS.SUGGESTED,
-      confidence: 0.5,
-      method: "location-suffix-pattern"
-    });
-  });
-
   return { locations, mentions };
 }
 
@@ -1321,12 +1300,17 @@ function buildRuntimeLexicon(seedLexicon) {
 function findSeedMentions(segments, aliases, entityType, entityId) {
   const mentions = [];
   segments.forEach((segment) => {
-    aliases.forEach((alias) => {
+    const segmentMentions = [];
+    unique(aliases)
+      .sort((a, b) => b.length - a.length)
+      .forEach((alias) => {
       if (!alias || alias.length < 2) return;
       const escaped = escapeRegExp(alias);
-      const regex = new RegExp(escaped, "g");
+      const startsWithKorean = /^[가-힣]/u.test(alias);
+      const endsWithKorean = /[가-힣]$/u.test(alias);
+      const regex = new RegExp(`${startsWithKorean ? "(?<![가-힣])" : ""}${escaped}${endsWithKorean ? "(?![가-힣])" : ""}`, "gu");
       for (const match of segment.text.matchAll(regex)) {
-        mentions.push({
+        segmentMentions.push({
           mention_id: "",
           entity_type: entityType,
           entity_id: entityId,
@@ -1340,6 +1324,12 @@ function findSeedMentions(segments, aliases, entityType, entityId) {
         });
       }
     });
+    segmentMentions
+      .sort((a, b) => a.char_start - b.char_start || (b.char_end - b.char_start) - (a.char_end - a.char_start))
+      .forEach((mention) => {
+        const overlaps = mentions.some((existing) => existing.segment_id === mention.segment_id && existing.char_start < mention.char_end && mention.char_start < existing.char_end);
+        if (!overlaps) mentions.push(mention);
+      });
   });
   return mentions.sort((a, b) => a.char_start - b.char_start);
 }

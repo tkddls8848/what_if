@@ -265,8 +265,15 @@ function fallbackKoreanContext(text, warning = "") {
     text: part.trim().slice(0, 240)
   })).filter((segment) => segment.text);
   const fullText = segments.map((segment) => segment.text).join("\n");
-  const names = countRegexCandidates(fullText, /([가-힣]{2,8})(?:은|는|이|가|을|를|에게|와|과|도|의|께서|에게서|한테|한테서)(?![가-힣])/g);
-  const locations = countRegexCandidates(fullText, /([가-힣A-Za-z0-9 ]{1,14}(?:방|집|거리|길|문|역|옥상|시장|골목|마당|학교|병원|정거장|백화점|도시|마을|강|산|바다|숲|들|밭|부엌|창고|가게|주막|다방|호텔|여관|궁|성))/g);
+  const names = countRegexCandidates(
+    fullText,
+    /(?<![가-힣])((?:[가-힣]{1,6}(?:님|씨|서방|부인|선생|사장|감독|의사|경찰))|아내|남편|어머니|아버지|할머니|할아버지|주인|손님|영감|색시|신부|신랑|아이|소년|소녀|여인|여편네|사내|노인|청년|아가씨|아주머니|아저씨)(?:은|는|이|가|을|를|에게|와|과|도|의|께서|에게서|한테|한테서)(?![가-힣])/gu
+  );
+  const locations = countRegexCandidates(
+    fullText,
+    /(?<![가-힣])([가-힣A-Za-z0-9]{0,12}(?:정거장|백화점|공동묘지|빈민굴|옥상|시장|골목|마당|학교|병원|도시|마을|바다|부엌|창고|가게|주막|다방|호텔|여관|묘지|거리|방|집|길|문|역|강|산|숲|밭|궁|성))(?:에서부터|으로부터|에서는|에서도|까지|부터|에서|으로|에는|에도|에|로|을|를|은|는|이|가|와|과|의|도)?(?![가-힣])/gu,
+    isFallbackLocationName
+  );
   return {
     analyzer: "regex-fallback",
     warning,
@@ -278,12 +285,12 @@ function fallbackKoreanContext(text, warning = "") {
   };
 }
 
-function countRegexCandidates(text, regex) {
+function countRegexCandidates(text, regex, predicate = () => true) {
   const counts = new Map();
   for (const match of text.matchAll(regex)) {
     const surface = String(match[0] || "").trim();
-    const base = stripKoreanParticle(String(match[1] || surface).trim());
-    if (base.length < 2) continue;
+    const base = String(match[1] || surface).trim();
+    if (base.length < 2 || !predicate(base)) continue;
     const item = counts.get(base) || { base, surfaces: new Set(), count: 0 };
     item.surfaces.add(surface);
     item.count += 1;
@@ -294,9 +301,8 @@ function countRegexCandidates(text, regex) {
     .map((item) => ({ base: item.base, surfaces: Array.from(item.surfaces).slice(0, 8), count: item.count }));
 }
 
-// Node-side copy, intentionally separate from the browser analyzer's stripKoreanParticle
-// (src/analyzer.js). server.js is a CommonJS Node process and cannot share the browser
-// ESM modules — keep this local and do not try to unify the two.
-function stripKoreanParticle(value) {
-  return String(value || "").replace(/\s+/g, " ").trim().replace(/(은|는|이|가|을|를|에게|와|과|도|의|으로|로|에서|에게서|께서|부터|까지|만|한테|한테서)$/u, "");
+function isFallbackLocationName(name) {
+  if (/^(?:불길|시집|계집|고집|편집|모집|수집|징역|기억|능력|세력|매력|가능성|특성|여성|남성|방송|서방)$/u.test(name)) return false;
+  if (/[어아]가게$/u.test(name)) return false;
+  return !/(?:님|씨|서방|부인|아내|남편|선생|사장|감독|의사|경찰|주인|손님|영감|색시|신부|신랑)$/u.test(name);
 }
