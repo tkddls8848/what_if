@@ -3,8 +3,10 @@ import test from "node:test";
 
 import pipelinePkg from "../src/server/pipeline.js";
 import promptsPkg from "../src/server/prompts.js";
+import { analyzeNovel } from "../src/analyzer.js";
 
 const {
+  splitSegments,
   splitScenes,
   splitLongText,
   verifyEvidence,
@@ -40,6 +42,29 @@ test("splitScenes: 아주 긴 단일 문단도 분할된다", () => {
   for (const scene of scenes) {
     assert.ok(scene.text.length <= 300 * 2 * 1.5 + 10);
   }
+});
+
+test("splitScenes: 기본 설정에서도 긴 단편을 충분한 분석 청크로 나눈다", () => {
+  const shortStory = "그는 오래된 집을 나섰다. 새로운 사건이 시작되었다. ".repeat(200);
+  const scenes = splitScenes(shortStory);
+  assert.ok(scenes.length >= 6);
+  assert.ok(scenes.every((scene) => scene.text.length <= 1000));
+});
+
+test("서버와 브라우저가 긴 문단의 segment 경계를 동일하게 계산한다", () => {
+  const text = "그는 오래된 집을 나섰다. 새로운 사건이 시작되었다. ".repeat(120);
+  const serverSegments = splitSegments(text).segments;
+  const browserSegments = analyzeNovel({
+    text,
+    title: "긴 문단",
+    sample: { id: "custom" }
+  }).segments;
+
+  assert.deepEqual(
+    serverSegments.map(({ text: value, char_start, char_end }) => ({ text: value, char_start, char_end })),
+    browserSegments.map(({ text: value, char_start, char_end }) => ({ text: value, char_start, char_end }))
+  );
+  assert.ok(browserSegments.length >= 3);
 });
 
 test("splitLongText: 문장 경계에서 자른다", () => {

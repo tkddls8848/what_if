@@ -29,21 +29,21 @@
           <button id="uploadTextBtn" type="button" title="로컬 TXT 파일을 원문으로 불러옵니다.">TXT 열기</button>
           <label class="analyzer-picker" for="analyzerMode">
             <span>분석 방식</span>
-            <select id="analyzerMode">
-              <option value="rule">브라우저 분석</option>
-              <option value="ollama">로컬 LLM Seed</option>
+            <select id="analyzerMode" title="빠른 분석은 즉시 실행되고, 상세 분석은 로컬 AI로 원문을 더 세밀하게 분석합니다.">
+              <option value="rule">빠른 분석 (기본)</option>
+              <option value="ollama">상세 분석 (로컬 AI)</option>
             </select>
           </label>
           <label class="model-picker" for="ollamaModel">
-            <span>모델</span>
-            <select id="ollamaModel" aria-label="Ollama 모델 선택">
+            <span>AI 모델</span>
+            <select id="ollamaModel" aria-label="상세 분석용 로컬 AI 모델 선택">
               <option value="qwen3.5:4b">qwen3.5:4b</option>
               <option value="gemma4:e4b">gemma4:e4b</option>
               <option value="gemma3:4b">gemma3:4b</option>
               <option value="qwen3:4b">qwen3:4b</option>
             </select>
           </label>
-          <button id="generateSeedBtn" type="button" title="선택한 Ollama 모델로 작품별 seed lexicon을 만든 뒤 분석합니다.">LLM Seed 재생성</button>
+          <button id="generateSeedBtn" type="button" title="캐시를 사용하지 않고 선택한 로컬 AI 모델로 상세 분석을 다시 실행합니다.">상세 분석 새로 실행</button>
           <button id="analyzeBtn" type="button" class="primary" title="현재 원문을 선택한 분석 방식으로 다시 분석합니다.">원문 분석</button>
           <button id="saveSnapshotBtn" type="button" title="현재 분석 결과와 원문을 브라우저 저장소에 저장합니다.">현재 결과 저장</button>
           <button id="loadSnapshotBtn" type="button" title="브라우저 저장소에 저장한 분석 결과를 복원합니다.">저장 결과 복원</button>

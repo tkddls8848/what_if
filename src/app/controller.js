@@ -38,6 +38,7 @@ import {
 
 export async function initApp() {
   bindEvents();
+  syncAnalysisModeControls();
   await refreshOllamaModelOptions();
   await loadSample(DEFAULT_SAMPLE_ID);
 }
@@ -107,6 +108,8 @@ function bindEvents() {
     }
     await loadSample(event.target.value);
   });
+
+  els.analyzerMode.addEventListener("change", syncAnalysisModeControls);
 
   els.uploadTextBtn.addEventListener("click", () => {
     els.textFileInput.click();
@@ -251,6 +254,15 @@ function bindEvents() {
   });
 }
 
+function syncAnalysisModeControls() {
+  const usesLocalAi = els.analyzerMode.value === "ollama";
+  els.ollamaModel.disabled = !usesLocalAi;
+  els.generateSeedBtn.disabled = !usesLocalAi;
+  els.ollamaModel.title = usesLocalAi
+    ? "상세 분석에 사용할 로컬 AI 모델입니다."
+    : "상세 분석을 선택하면 AI 모델을 변경할 수 있습니다.";
+}
+
 // Clears analysis-derived workspace state so switching documents never leaves the
 // previous file's entities, selection or filters lingering in the UI.
 function resetWorkspaceState() {
@@ -327,7 +339,7 @@ async function runAnalysis(options = {}) {
 
   if (options.forceDynamicSeed || els.analyzerMode.value === "ollama") {
     state.analysis = await analyzeWithDynamicSeed(input, options.triggerButton || els.analyzeBtn, {
-      // "LLM Seed 재생성"은 서버 캐시를 우회해 새로 분석한다
+      // "상세 분석 새로 실행"은 서버 캐시를 우회해 새로 분석한다
       force: Boolean(options.forceDynamicSeed)
     });
   } else {
@@ -362,7 +374,7 @@ async function analyzeWithDynamicSeed(input, triggerButton, options = {}) {
   const originalLabel = triggerButton.textContent;
   triggerButton.disabled = true;
   triggerButton.classList.add("is-loading");
-  triggerButton.textContent = "Seed 생성 중";
+  triggerButton.textContent = "상세 분석 준비 중";
   let ollamaPayload = null;
   let ollamaDiagnostics = null;
   let ollamaError = "";
@@ -372,7 +384,7 @@ async function analyzeWithDynamicSeed(input, triggerButton, options = {}) {
       force: Boolean(options.force),
       onProgress(progress) {
         if (progress.stage === "scene") {
-          triggerButton.textContent = `장면 ${progress.scene}/${progress.total} 분석 중`;
+          triggerButton.textContent = `청크 ${progress.scene}/${progress.total} 분석 중`;
         } else if (progress.stage === "relations") {
           triggerButton.textContent = "관계 추출 중";
         }
@@ -384,12 +396,13 @@ async function analyzeWithDynamicSeed(input, triggerButton, options = {}) {
     input.engine = "ollama-dynamic-seed-ko-adapter";
     triggerButton.textContent = "분석 중";
   } catch (error) {
-    ollamaError = `Ollama seed 생성 실패: ${error.message || error}`;
+    ollamaError = `로컬 AI 상세 분석 실패: ${error.message || error}`;
     input.engine = "pattern-only-ko-adapter";
   } finally {
     triggerButton.disabled = false;
     triggerButton.classList.remove("is-loading");
     triggerButton.textContent = originalLabel;
+    syncAnalysisModeControls();
   }
 
   let analysis = analyzeNovel(input);
@@ -398,7 +411,7 @@ async function analyzeWithDynamicSeed(input, triggerButton, options = {}) {
     delete fallbackInput.seedLexicon;
     fallbackInput.engine = "pattern-fallback-after-empty-dynamic-seed";
     analysis = analyzeNovel(fallbackInput);
-    analysis.diagnostics.warnings.push("Ollama 동적 seed에서 원문 mention을 찾지 못해 규칙 기반 fallback으로 다시 분석했습니다.");
+    analysis.diagnostics.warnings.push("로컬 AI 결과를 원문에서 확인하지 못해 빠른 분석 결과로 대체했습니다.");
   }
   if (ollamaPayload) applyOllamaPayload(analysis, ollamaPayload, input.seedLexicon.model);
   if (ollamaDiagnostics) analysis.diagnostics.ollama_pipeline = ollamaDiagnostics;
@@ -465,7 +478,7 @@ async function readSseStream(response, onProgress) {
   if (buffer.trim()) handleEvent(buffer);
 
   if (errorPayload) throw new Error(errorPayload.message || errorPayload.error || "Ollama analysis failed");
-  if (!donePayload) throw new Error("Ollama 분석 스트림이 완료 없이 종료되었습니다.");
+  if (!donePayload) throw new Error("로컬 AI 분석 스트림이 완료 없이 종료되었습니다.");
   return donePayload;
 }
 

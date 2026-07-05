@@ -278,6 +278,12 @@ select {
   min-width: 128px;
 }
 
+.topbar-actions button:disabled,
+.topbar-actions select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .workspace {
   flex: 1;
   display: grid;

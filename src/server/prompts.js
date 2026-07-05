@@ -10,7 +10,7 @@
  */
 
 // 프롬프트·스키마가 바뀌면 올린다 (캐시 키에 포함).
-const PROMPT_VERSION = "scene-v1";
+const PROMPT_VERSION = "scene-v2";
 
 const NUM_CTX = 8192;
 const BUDGET_RATIO = 0.6;

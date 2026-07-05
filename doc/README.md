@@ -28,8 +28,8 @@ Novel IF Reader는 한국어 소설 원문을 문단 단위로 분석해 다음 
 
 - 이상 「날개」, 김동인 「감자」 내장 샘플
 - TXT 업로드와 원문 직접 편집
-- 브라우저 규칙 기반 한국어 분석
-- Ollama 4B~7B 모델을 이용한 **장면 단위 map-reduce 추출 파이프라인**
+- 빠른 분석(브라우저 규칙 기반)
+- Ollama 4B~7B 모델을 이용한 **분석 청크 단위 map-reduce 추출 파이프라인**
   (길이 제한 없음, structured outputs, 롤링 cast, evidence 검증, 관계 pass)
 - SSE 진행 스트림과 장면 진행률 표시
 - 분석 결과 디스크 캐시(`cache/`)와 `force` 재생성
@@ -70,8 +70,8 @@ Browser
 
 - 프론트엔드는 빌드 단계가 없는 Vanilla JavaScript ES modules 구조다.
 - `server.js`는 CommonJS 기반 Express 프로세스로 정적 파일과 Ollama 중계 API를 제공한다.
-- 기본 규칙 분석은 브라우저에서 완료되며 서버나 Ollama가 없어도 동작한다.
-- Ollama 모드에서만 원문이 로컬 Express API를 거쳐 Python 전처리와 Ollama로 전달된다.
+- 빠른 분석은 브라우저에서 완료되며 서버나 Ollama가 없어도 동작한다.
+- 상세 분석에서만 원문이 로컬 Express API를 거쳐 Python 전처리와 Ollama로 전달된다.
 - 데이터베이스는 없으며 서버는 분석 결과를 보관하지 않는다.
 
 ## 4. 디렉터리와 책임
@@ -129,8 +129,8 @@ novel_if/
 
 ### 선택
 
-- Ollama: 로컬 LLM 분석 시 필요
-- Python 3: Ollama용 한국어 전처리 시 사용
+- Ollama: 상세 분석 사용 시 필요
+- Python 3: 상세 분석용 한국어 전처리 시 사용
 - `kiwipiepy`: Python 형태소 분석 품질 향상
 
 ### 환경 변수
@@ -141,7 +141,7 @@ novel_if/
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API 기준 주소 |
 | `PYTHON` | `python` | 형태소 worker 실행 파일 |
 
-Python 실행 또는 `kiwipiepy` import가 실패하면 Node/Python 정규식 fallback으로 전환된다. 이 실패는 기본 브라우저 분석을 중단하지 않는다.
+Python 실행 또는 `kiwipiepy` import가 실패하면 Node/Python 정규식 fallback으로 전환된다. 이 실패는 빠른 분석을 중단하지 않는다.
 
 ## 6. 입력 유형과 분석 모드
 
@@ -155,47 +155,54 @@ Python 실행 또는 `kiwipiepy` import가 실패하면 Node/Python 정규식 fa
 
 업로드 파일명에서 문서 제목을 만들며, 업로드 원문은 서버에 저장하지 않는다.
 
-### 브라우저 분석
+### 빠른 분석 (기본)
 
 기본 모드다. `analyzeNovel()`이 브라우저에서 동기적으로 실행된다.
 
 1. 줄바꿈과 공백을 정규화한다.
-2. 빈 줄 기준으로 `Segment`를 만든다.
-3. segment를 최대 8개 그룹으로 균등 분할해 임시 `Scene`을 만든다.
+2. 빈 줄을 기본 경계로 `Segment`를 만들되, 긴 문단은 문장 경계를 우선해 약 1,000자 단위로 나눈다.
+3. segment를 최대 12개 그룹으로 균등 분할해 화면 탐색용 임시 `Scene`을 만든다.
 4. 내장 seed 또는 외부 문서용 동적 seed로 인물·장소를 추출한다.
 5. 원문 문자 범위와 연결된 `Mention`을 생성한다.
 6. 문장별 사건 유형과 참여 인물·장소를 계산한다.
 7. mention을 이용해 사건 연결을 보정한다.
 8. 인물 상태와 관계를 다시 계산한다.
 
-### Ollama 분석 (장면 단위 map-reduce 파이프라인)
+### 상세 분석 (로컬 AI)
 
-`로컬 LLM Seed` 또는 `LLM Seed 재생성`을 선택하면 다음 순서로 실행된다.
+`상세 분석 (로컬 AI)` 또는 `상세 분석 새로 실행`을 선택하면 다음 순서로 실행된다.
 
 1. 브라우저가 `POST /api/analyze/ollama`(SSE)로 원문과 모델명을 보낸다.
 2. 서버가 캐시(`sha256(text+model+mode+prompt_version)`)를 조회한다.
-   `LLM Seed 재생성`은 `force`로 캐시를 우회한다.
-3. 서버가 원문을 문단 기반 장면(기본 약 2,000자)으로 나눈다. 원문 길이
+   `상세 분석 새로 실행`은 `force`로 캐시를 우회한다.
+3. 서버가 원문을 문장 경계를 우선한 분석 청크(기본 약 1,000자)로 나눈다. 원문 길이
    제한이 없으며, 각 호출의 프롬프트는 `num_ctx`의 60% 이하로 예산을 검사한다.
-4. 장면마다 두 번의 소형 호출을 한다 — (a) 인물·장소 추출, (b) 사건 프레임과
+4. 분석 청크마다 두 번의 소형 호출을 한다 — (a) 인물·장소 추출, (b) 사건 프레임과
    상태 변화 추출. Ollama structured outputs(JSON Schema `format`)로 응답
    구조를 디코딩 수준에서 강제하고, 파싱 실패는 1회 재시도한다.
-5. 앞 장면까지 확인된 인물 목록(롤링 cast)을 다음 장면 프롬프트에 전달해
-   재등장 인물의 이름 연속성을 유지한다. cast에는 2개 장면 이상 등장했거나
+5. 앞 청크까지 확인된 인물 목록(롤링 cast)을 다음 청크 프롬프트에 전달해
+   재등장 인물의 이름 연속성을 유지한다. cast에는 2개 청크 이상 등장했거나
    규칙 채널(정규식 후보)과 합의된 인물만 편입한다.
-6. 서버가 장면 결과를 병합한다 — 이름 정규화 dedupe, 별칭 누적, evidence가
-   해당 장면 원문에 실제 존재하는지 검증(불일치 시 confidence 강등),
-   2개 장면 이상 등장·규칙 합의 인물은 confidence 상향.
+6. 서버가 청크 결과를 병합한다 — 이름 정규화 dedupe, 별칭 누적, evidence가
+   해당 청크 원문에 실제 존재하는지 검증(불일치 시 confidence 강등),
+   2개 청크 이상 등장·규칙 합의 인물은 confidence 상향.
 7. 관계 pass: 원문 대신 병합된 cast·사건 프레임 요약을 입력으로 1회 호출하고,
    허용 관계 화이트리스트 밖의 관계를 버린다.
-8. 장면별 진행(`progress`)이 SSE로 브라우저에 전달되어 버튼에 표시된다.
-   일부 장면 실패는 진단(`scenes_failed`)에 기록될 뿐 전체 실패로 번지지 않는다.
+8. 청크별 진행(`progress`)이 SSE로 브라우저에 전달되어 버튼에 표시된다.
+   일부 청크 실패는 진단(`scenes_failed`)에 기록될 뿐 전체 실패로 번지지 않는다.
 9. 브라우저는 최종 payload로 동적 seed를 만들고 규칙 분석을 실행한 뒤,
    Ollama 객체가 실제 원문 mention과 연결될 때만 병합한다 (기존과 동일).
 10. 동적 seed에서 인물 mention을 하나도 찾지 못하면 규칙 분석으로 재실행한다.
 
-상태 변화(`state_changes`)는 추출된 장면의 segment 번호(`segment_indexes`)와
+상태 변화(`state_changes`)는 추출된 분석 청크의 segment 번호(`segment_indexes`)와
 함께 반환되어 시점별 인물 상태 표시의 근거가 된다.
+
+`scene-v2`부터 분석 청크 목표 크기는 1,000자다. 이전 `scene-v1` 캐시는
+프롬프트 버전이 캐시 키에 포함되므로 자동으로 재사용되지 않는다. 응답 진단의
+`target_chars`는 요청한 청크 목표 크기, `scenes_total`은 실제 분석 청크 수다.
+분석 청크가 60개를 넘는 장문은 목표 크기를 단계적으로 늘려 호출 수를 제한한다.
+정상 실행의 모델 호출 수는 기본적으로 `청크 수 × 2 + 관계 pass 1회`이므로,
+기존 2,000자 분할보다 처리 시간은 늘지만 청크 내부 사건 압축과 누락 가능성은 줄어든다.
 
 허용 모델은 태그 또는 모델 정보에서 4B~7B로 판별되는 completion 모델이다.
 요청 옵션은 `temperature: 0.1`, `num_ctx: 8192`이다. `mode: "single"`로 기존
@@ -444,15 +451,27 @@ Ollama `/api/tags`를 조회하고 completion capability 및 4B~7B 조건을 만
 ```json
 {
   "model": "qwen3.5:4b",
+  "mode": "scene",
   "analysis": {
     "characters": [],
     "locations": [],
     "event_frames": [],
     "relationships": [],
     "state_changes": []
+  },
+  "diagnostics": {
+    "prompt_version": "scene-v2",
+    "target_chars": 1000,
+    "scenes_total": 6,
+    "scenes_failed": [],
+    "cache": "miss"
   }
 }
 ```
+
+`scenes_total`과 `scenes_failed`의 `scene` 번호는 호환성을 위해 유지한 필드명이며,
+여기서 scene은 화면의 `Scene`이 아니라 Ollama 분석 청크를 뜻한다. SSE의
+`progress.scene`과 `progress.total`도 같은 분석 청크 번호와 전체 개수다.
 
 빈 원문 또는 허용 범위 밖 모델은 `400`, Ollama 연결·응답·JSON 파싱 실패는 `502`를 반환한다. Express JSON 본문 제한은 2MB다.
 
@@ -468,6 +487,8 @@ npm.cmd test
 - 형용사·부사·조사·일반 명사의 객체 오인 방지
 - 공백이 포함된 문장 조각을 장소명으로 생성하지 않음
 - 「감자」를 외부 TXT처럼 분석해도 주요 인물·장소가 유지됨
+- 긴 단편과 단일 장문 문단이 1,000자 이하 분석 청크로 분할됨
+- 청크별 추출 병합, 부분 실패, evidence 검증과 관계 화이트리스트
 
 Python fallback은 동일 fixture를 `build_regex_context()`에 전달해 별도로 검증할 수 있다.
 
@@ -479,7 +500,7 @@ Python fallback은 동일 fixture를 `build_regex_context()`에 전달해 별도
 
 ### 단순 장면 분할
 
-Scene은 의미 변화가 아니라 segment 개수를 기준으로 최대 8개 그룹으로 나눈다. 사건 순서 탐색용 임시 단위이며 서사학적 장면 판정이 아니다.
+Scene은 의미 변화가 아니라 약 1,000자 이하 segment 개수를 기준으로 최대 12개 그룹으로 나눈다. 사건 순서 탐색용 임시 단위이며 서사학적 장면 판정이 아니다. Ollama 진행률에 표시되는 분석 청크와 화면의 Scene은 서로 다른 단위다.
 
 ### 제한된 공지시 처리
 

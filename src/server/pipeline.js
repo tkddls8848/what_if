@@ -13,7 +13,10 @@
 const { normalizeText, regexCandidateNames } = require("./morph");
 const prompts = require("./prompts");
 
-const DEFAULT_TARGET_CHARS = 2000;
+// 4B급 모델이 한 번에 여러 사건을 과도하게 압축하지 않도록 분석 단위를 작게
+// 유지한다. 브라우저 analyzer의 MAX_SEGMENT_CHARS와 같은 값이어야
+// state_changes.segment_indexes가 화면의 segment와 일치한다.
+const DEFAULT_TARGET_CHARS = 1000;
 const MAX_SCENES = 60;
 
 // ── 장면 분할 ────────────────────────────────────────────────────────────────
@@ -27,38 +30,65 @@ function splitSegments(text) {
     if (!trimmed) continue;
     const start = normalized.indexOf(trimmed, cursor);
     const charStart = start >= 0 ? start : cursor;
-    segments.push({
-      index: segments.length + 1,
-      text: trimmed,
-      char_start: charStart,
-      char_end: charStart + trimmed.length
-    });
+    for (const piece of splitLongTextWithOffsets(trimmed, DEFAULT_TARGET_CHARS)) {
+      segments.push({
+        index: segments.length + 1,
+        text: piece.text,
+        char_start: charStart + piece.start,
+        char_end: charStart + piece.end
+      });
+    }
     cursor = charStart + trimmed.length;
   }
   return { normalized, segments };
 }
 
-function splitLongText(text, maxChars) {
-  if (text.length <= maxChars) return [text];
-  const sentences = text.split(/(?<=[.!?…。]|다\.)\s+/u);
+function splitLongTextWithOffsets(text, maxChars) {
+  const value = String(text || "");
+  if (!value) return [];
+  if (value.length <= maxChars) return [{ text: value, start: 0, end: value.length }];
+
   const chunks = [];
-  let current = "";
-  for (const sentence of sentences) {
-    if (current && (current.length + sentence.length + 1) > maxChars) {
-      chunks.push(current);
-      current = sentence;
-    } else {
-      current = current ? `${current} ${sentence}` : sentence;
+  let cursor = 0;
+  while (cursor < value.length) {
+    while (/\s/u.test(value[cursor] || "")) cursor += 1;
+    if (cursor >= value.length) break;
+
+    const remaining = value.length - cursor;
+    let end = remaining <= maxChars ? value.length : cursor + maxChars;
+    if (end < value.length) {
+      const window = value.slice(cursor, end + 1);
+      const minBoundary = Math.floor(maxChars * 0.55);
+      const boundaryPattern = /[.!?…。](?:["'’”」』》)]*)\s+/gu;
+      let match;
+      let sentenceEnd = -1;
+      while ((match = boundaryPattern.exec(window))) {
+        const candidate = match.index + match[0].trimEnd().length;
+        if (candidate >= minBoundary && candidate <= maxChars) sentenceEnd = candidate;
+      }
+      if (sentenceEnd > 0) {
+        end = cursor + sentenceEnd;
+      } else {
+        const whitespace = window.slice(0, maxChars + 1).search(/\s+\S*$/u);
+        if (whitespace >= minBoundary) end = cursor + whitespace;
+      }
     }
+
+    const raw = value.slice(cursor, end);
+    const leading = raw.length - raw.trimStart().length;
+    const trailing = raw.length - raw.trimEnd().length;
+    const start = cursor + leading;
+    const trimmedEnd = end - trailing;
+    if (trimmedEnd > start) {
+      chunks.push({ text: value.slice(start, trimmedEnd), start, end: trimmedEnd });
+    }
+    cursor = Math.max(end, cursor + 1);
   }
-  if (current) chunks.push(current);
-  // 문장 분리로도 줄지 않으면 강제 절단
-  return chunks.flatMap((chunk) =>
-    chunk.length <= maxChars * 1.5
-      ? [chunk]
-      : Array.from({ length: Math.ceil(chunk.length / maxChars) }, (_v, i) =>
-          chunk.slice(i * maxChars, (i + 1) * maxChars))
-  );
+  return chunks;
+}
+
+function splitLongText(text, maxChars) {
+  return splitLongTextWithOffsets(text, maxChars).map((chunk) => chunk.text);
 }
 
 /** 문단 세그먼트를 목표 길이의 장면으로 묶는다. 장면 수 상한 초과 시 목표 길이를 늘린다. */
@@ -70,7 +100,7 @@ function splitScenes(text, { targetChars = DEFAULT_TARGET_CHARS } = {}) {
     const scenes = [];
     let current = null;
     for (const segment of segments) {
-      const pieces = splitLongText(segment.text, target * 2).map((piece, i, arr) => ({
+      const pieces = splitLongText(segment.text, target).map((piece, i, arr) => ({
         ...segment,
         text: piece,
         split_part: arr.length > 1 ? i + 1 : 0
@@ -231,6 +261,7 @@ async function runScenePipeline({
     prompt_eval_total: 0,
     eval_total: 0,
     budget_tokens: prompts.promptBudgetTokens(numCtx),
+    target_chars: targetChars,
     evidence_demoted: 0
   };
 

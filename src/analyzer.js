@@ -1142,28 +1142,77 @@ function normalizeText(text) {
     .trim();
 }
 
+// 서버 장면 파이프라인의 DEFAULT_TARGET_CHARS와 맞춘다. 긴 문단도 분석과
+// 화면 양쪽에서 같은 segment 경계를 사용해야 LLM 상태 변화 앵커가 어긋나지 않는다.
+const MAX_SEGMENT_CHARS = 1000;
+const MAX_DISPLAY_SCENES = 12;
+
+function splitParagraphWithOffsets(text, maxChars = MAX_SEGMENT_CHARS) {
+  const chunks = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    while (/\s/u.test(text[cursor] || "")) cursor += 1;
+    if (cursor >= text.length) break;
+
+    const remaining = text.length - cursor;
+    let end = remaining <= maxChars ? text.length : cursor + maxChars;
+    if (end < text.length) {
+      const window = text.slice(cursor, end + 1);
+      const minBoundary = Math.floor(maxChars * 0.55);
+      const boundaryPattern = /[.!?…。](?:["'’”」』》)]*)\s+/gu;
+      let match;
+      let sentenceEnd = -1;
+      while ((match = boundaryPattern.exec(window))) {
+        const candidate = match.index + match[0].trimEnd().length;
+        if (candidate >= minBoundary && candidate <= maxChars) sentenceEnd = candidate;
+      }
+      if (sentenceEnd > 0) {
+        end = cursor + sentenceEnd;
+      } else {
+        const whitespace = window.slice(0, maxChars + 1).search(/\s+\S*$/u);
+        if (whitespace >= minBoundary) end = cursor + whitespace;
+      }
+    }
+
+    const raw = text.slice(cursor, end);
+    const leading = raw.length - raw.trimStart().length;
+    const trailing = raw.length - raw.trimEnd().length;
+    const start = cursor + leading;
+    const trimmedEnd = end - trailing;
+    if (trimmedEnd > start) {
+      chunks.push({ text: text.slice(start, trimmedEnd), start, end: trimmedEnd });
+    }
+    cursor = Math.max(end, cursor + 1);
+  }
+  return chunks;
+}
+
 function buildSegments(text, documentId) {
   if (!text) return [];
   const paragraphs = text.split(/\n\s*\n/g).map((part) => part.trim()).filter(Boolean);
   let cursor = 0;
-  return paragraphs.map((paragraph, index) => {
+  const segments = [];
+  paragraphs.forEach((paragraph) => {
     const charStart = text.indexOf(paragraph, cursor);
-    const charEnd = charStart + paragraph.length;
-    cursor = charEnd;
-    return {
-      segment_id: makeId("seg", index),
-      document_id: documentId,
-      index: index + 1,
-      scene_id: "",
-      text: paragraph,
-      char_start: charStart,
-      char_end: charEnd
-    };
+    splitParagraphWithOffsets(paragraph).forEach((piece) => {
+      const index = segments.length;
+      segments.push({
+        segment_id: makeId("seg", index),
+        document_id: documentId,
+        index: index + 1,
+        scene_id: "",
+        text: piece.text,
+        char_start: charStart + piece.start,
+        char_end: charStart + piece.end
+      });
+    });
+    cursor = charStart + paragraph.length;
   });
+  return segments;
 }
 
 function buildScenes(segments, documentId) {
-  const sceneSize = Math.max(1, Math.ceil(segments.length / Math.min(8, Math.max(1, segments.length))));
+  const sceneSize = Math.max(1, Math.ceil(segments.length / Math.min(MAX_DISPLAY_SCENES, Math.max(1, segments.length))));
   const scenes = [];
   segments.forEach((segment, index) => {
     const sceneIndex = Math.floor(index / sceneSize);
