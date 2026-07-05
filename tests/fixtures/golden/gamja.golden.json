@@ -1,0 +1,23 @@
+{
+  "document": "감자 (김동인, 1925)",
+  "source": "texts/gamja.txt",
+  "note": "required는 recall 분모(반드시 찾아야 함), acceptable은 precision 계산 시 정답으로 인정하는 추가 이름. banned는 발견되면 안 되는 오탐.",
+  "characters": {
+    "required": [
+      { "name": "복녀", "aliases": ["복녀"] },
+      { "name": "남편", "aliases": ["남편", "복녀의 남편"] },
+      { "name": "왕 서방", "aliases": ["왕 서방", "왕서방"] }
+    ],
+    "acceptable": ["감독", "어머니", "아버지", "주인", "마누라", "처녀", "색시", "신부"],
+    "banned": ["모양", "조밥", "얼굴", "머리", "소리", "바구니", "활극", "마음"]
+  },
+  "locations": {
+    "required": [
+      { "name": "칠성문", "aliases": ["칠성문"] },
+      { "name": "빈민굴", "aliases": ["빈민굴"] },
+      { "name": "평양", "aliases": ["평양"] }
+    ],
+    "acceptable": ["기자묘", "솔밭", "감자밭", "밭", "집", "방", "길", "마을", "동네", "왕가"],
+    "banned": ["불길", "징역", "들어가게", "시집"]
+  }
+}

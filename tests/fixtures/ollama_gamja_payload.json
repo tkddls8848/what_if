@@ -1,0 +1,94 @@
+{
+  "characters": [
+    {
+      "name": "복녀",
+      "aliases": [],
+      "role": "주인공",
+      "description": "가난하지만 정직한 농가에서 자란 여인",
+      "evidence": "복녀는, 원래 가난은 하나마 정직한 농가에서 규칙 있게 자라난 처녀였었다",
+      "confidence": 0.9
+    },
+    {
+      "name": "남편",
+      "aliases": ["복녀의 남편"],
+      "role": "복녀의 남편",
+      "description": "게으른 소작인",
+      "evidence": "그의 남편은",
+      "confidence": 0.8
+    },
+    {
+      "name": "왕 서방",
+      "aliases": [],
+      "role": "중국인 지주",
+      "description": "감자밭 주인",
+      "evidence": "왕 서방",
+      "confidence": 0.8
+    }
+  ],
+  "locations": [
+    {
+      "name": "칠성문",
+      "aliases": [],
+      "type": "landmark",
+      "description": "평양의 성문",
+      "evidence": "칠성문",
+      "confidence": 0.85
+    },
+    {
+      "name": "빈민굴",
+      "aliases": [],
+      "type": "slum",
+      "description": "칠성문 밖 빈민 거주지",
+      "evidence": "빈민굴",
+      "confidence": 0.85
+    }
+  ],
+  "event_types": [],
+  "mental_states": [
+    { "state": "수치", "words": ["수치"], "description": "장면 상태 변화에서 관찰됨" }
+  ],
+  "physical_states": [],
+  "event_frames": [
+    {
+      "id": "frame_001",
+      "type": "movement",
+      "label": "이동",
+      "summary": "복녀 부부가 칠성문 밖 빈민굴로 이주한다",
+      "who": ["복녀", "남편"],
+      "where": ["빈민굴"],
+      "when": "",
+      "what_happened": "생계가 어려워져 빈민굴로 옮겼다",
+      "why_relevant": "",
+      "result": "빈민굴 생활 시작",
+      "evidence": "칠성문 밖 빈민굴로 밀리어 나오게 되었다",
+      "confidence": 0.8,
+      "scene_index": 1,
+      "segment_indexes": [1, 2]
+    }
+  ],
+  "relationships": [
+    {
+      "source": "복녀",
+      "source_type": "character",
+      "target": "남편",
+      "target_type": "character",
+      "type": "family_of",
+      "label": "부부",
+      "evidence": "frame_001",
+      "confidence": "explicit"
+    }
+  ],
+  "state_changes": [
+    {
+      "character": "복녀",
+      "trigger_event": "빈민굴 이주",
+      "before": { "location": "농가", "mental_state": "", "physical_state": "", "knowledge": [] },
+      "after": { "location": "빈민굴", "mental_state": "수치", "physical_state": "", "knowledge": [] },
+      "evidence": "칠성문 밖 빈민굴로 밀리어 나오게 되었다",
+      "confidence": "explicit",
+      "scene_index": 1,
+      "segment_indexes": [1, 2]
+    }
+  ],
+  "events": []
+}

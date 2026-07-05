@@ -120,8 +120,32 @@ novel_if/
 
 ## 서버 API
 
+- `GET /api/ollama/health`: Ollama 도달성, 허용 모델, Python 전처리 가용성, 캐시 상태 진단
 - `GET /api/ollama/models`: 연결된 Ollama에서 사용 가능한 4B~7B completion 모델 조회
-- `POST /api/analyze/ollama`: 원문과 모델명을 받아 형태소 전처리 및 Ollama 구조화 분석 실행
+- `POST /api/analyze/ollama`: 원문과 모델명을 받아 LLM 구조화 분석 실행
+  - body: `{ text, model, mode, force }`
+  - `mode: "scene"`(기본) — 원문을 장면 단위로 나눠 인물·장소 → 사건·상태 →
+    관계 순서로 소형 호출을 반복하는 map-reduce 파이프라인. **원문 길이 제한이
+    없고** 컨텍스트 절단이 발생하지 않는다
+  - `mode: "single"` — 기존 단발 프롬프트 (비교·회귀용, 긴 원문은 절단될 수 있음)
+  - `force: true` — 서버 캐시를 우회하고 새로 분석 ("LLM Seed 재생성" 버튼)
+  - `Accept: text/event-stream`이면 SSE로 `progress`(장면 진행) → `done`/`error`
+    이벤트를 보낸다. 화면은 장면 진행률을 버튼에 표시한다
+- 오류는 `{ok:false, error_code, message, retryable}` 형식이다
+  (`CONNECTION_FAILED`, `TIMEOUT`, `UPSTREAM_ERROR`, `PARSE_FAILED` 등)
+
+같은 원문·모델·모드의 결과는 `cache/`에 저장되어 즉시 재사용된다.
+환경 변수: `OLLAMA_TIMEOUT_MS`(기본 120000), `NOVEL_IF_CACHE=0`(캐시 비활성),
+`NOVEL_IF_CACHE_DIR`(캐시 위치).
+
+## 추출 품질 평가
+
+골든셋(`tests/fixtures/golden/`) 기준 precision/recall 리포트:
+
+```powershell
+node scripts/eval_extraction.mjs                      # 규칙 채널 + fixture LLM 채널
+node scripts/eval_extraction.mjs --live qwen3.5:4b    # 실제 Ollama 장면 파이프라인 포함
+```
 
 ## 현재 제약
 

@@ -326,7 +326,10 @@ async function runAnalysis(options = {}) {
   };
 
   if (options.forceDynamicSeed || els.analyzerMode.value === "ollama") {
-    state.analysis = await analyzeWithDynamicSeed(input, options.triggerButton || els.analyzeBtn);
+    state.analysis = await analyzeWithDynamicSeed(input, options.triggerButton || els.analyzeBtn, {
+      // "LLM Seed 재생성"은 서버 캐시를 우회해 새로 분석한다
+      force: Boolean(options.forceDynamicSeed)
+    });
   } else {
     state.analysis = analyzeNovel(input);
   }
@@ -355,17 +358,28 @@ function focusFirstConnectedSegmentIfCurrentMapIsEmpty() {
   if (segment) state.currentSegment = segment.index;
 }
 
-async function analyzeWithDynamicSeed(input, triggerButton) {
+async function analyzeWithDynamicSeed(input, triggerButton, options = {}) {
   const originalLabel = triggerButton.textContent;
   triggerButton.disabled = true;
   triggerButton.classList.add("is-loading");
   triggerButton.textContent = "Seed 생성 중";
   let ollamaPayload = null;
+  let ollamaDiagnostics = null;
   let ollamaError = "";
 
   try {
-    const result = await requestOllamaAnalysis(input.text, els.ollamaModel.value.trim());
+    const result = await requestOllamaAnalysis(input.text, els.ollamaModel.value.trim(), {
+      force: Boolean(options.force),
+      onProgress(progress) {
+        if (progress.stage === "scene") {
+          triggerButton.textContent = `장면 ${progress.scene}/${progress.total} 분석 중`;
+        } else if (progress.stage === "relations") {
+          triggerButton.textContent = "관계 추출 중";
+        }
+      }
+    });
     ollamaPayload = result.analysis;
+    ollamaDiagnostics = result.diagnostics || null;
     input.seedLexicon = buildDynamicSeedLexicon(ollamaPayload, result.model);
     input.engine = "ollama-dynamic-seed-ko-adapter";
     triggerButton.textContent = "분석 중";
@@ -387,19 +401,72 @@ async function analyzeWithDynamicSeed(input, triggerButton) {
     analysis.diagnostics.warnings.push("Ollama 동적 seed에서 원문 mention을 찾지 못해 규칙 기반 fallback으로 다시 분석했습니다.");
   }
   if (ollamaPayload) applyOllamaPayload(analysis, ollamaPayload, input.seedLexicon.model);
+  if (ollamaDiagnostics) analysis.diagnostics.ollama_pipeline = ollamaDiagnostics;
   if (ollamaError) analysis.diagnostics.warnings.push(ollamaError);
   return analysis;
 }
 
-async function requestOllamaAnalysis(text, model) {
+async function requestOllamaAnalysis(text, model, { force = false, onProgress = () => {} } = {}) {
   const response = await fetch("/api/analyze/ollama", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, model })
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ text, model, force })
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Ollama analysis failed");
-  return { model: payload.model || model, analysis: payload.analysis || {} };
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || payload.error || "Ollama analysis failed");
+    return { model: payload.model || model, analysis: payload.analysis || {}, diagnostics: payload.diagnostics || {} };
+  }
+
+  const finalPayload = await readSseStream(response, onProgress);
+  return {
+    model: finalPayload.model || model,
+    analysis: finalPayload.analysis || {},
+    diagnostics: finalPayload.diagnostics || {}
+  };
+}
+
+async function readSseStream(response, onProgress) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let donePayload = null;
+  let errorPayload = null;
+
+  const handleEvent = (chunk) => {
+    let event = "message";
+    let data = "";
+    for (const line of chunk.split("\n")) {
+      if (line.startsWith("event: ")) event = line.slice(7).trim();
+      else if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    if (!data) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+    } catch (_error) {
+      return;
+    }
+    if (event === "progress") onProgress(parsed);
+    else if (event === "done") donePayload = parsed;
+    else if (event === "error") errorPayload = parsed;
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop();
+    events.forEach(handleEvent);
+  }
+  if (buffer.trim()) handleEvent(buffer);
+
+  if (errorPayload) throw new Error(errorPayload.message || errorPayload.error || "Ollama analysis failed");
+  if (!donePayload) throw new Error("Ollama 분석 스트림이 완료 없이 종료되었습니다.");
+  return donePayload;
 }
 
 initApp();

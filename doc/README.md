@@ -29,13 +29,18 @@ Novel IF Reader는 한국어 소설 원문을 문단 단위로 분석해 다음 
 - 이상 「날개」, 김동인 「감자」 내장 샘플
 - TXT 업로드와 원문 직접 편집
 - 브라우저 규칙 기반 한국어 분석
-- Ollama 4B~7B 모델을 이용한 동적 seed 분석
+- Ollama 4B~7B 모델을 이용한 **장면 단위 map-reduce 추출 파이프라인**
+  (길이 제한 없음, structured outputs, 롤링 cast, evidence 검증, 관계 pass)
+- SSE 진행 스트림과 장면 진행률 표시
+- 분석 결과 디스크 캐시(`cache/`)와 `force` 재생성
+- `GET /api/ollama/health` 진단과 구조화 오류 계약
 - Python/`kiwipiepy` 형태소 전처리와 정규식 fallback
 - Reader, 관계 지도, 사건 타임라인, 인물 상태 화면
 - `/check` 검수 화면
 - 브라우저 `localStorage` 스냅샷
 - JSON, CSV, Markdown, TimelineJS, Graph JSON 출력
-- Node 내장 테스트 러너 기반 분석기 회귀 테스트
+- Node 내장 테스트 러너 기반 회귀 테스트 (분석기·클라이언트·파이프라인·서버 API)
+- 골든셋 precision/recall 평가 스크립트 (`scripts/eval_extraction.mjs`)
 
 ### 구현되지 않음
 
@@ -163,20 +168,44 @@ Python 실행 또는 `kiwipiepy` import가 실패하면 Node/Python 정규식 fa
 7. mention을 이용해 사건 연결을 보정한다.
 8. 인물 상태와 관계를 다시 계산한다.
 
-### Ollama 분석
+### Ollama 분석 (장면 단위 map-reduce 파이프라인)
 
 `로컬 LLM Seed` 또는 `LLM Seed 재생성`을 선택하면 다음 순서로 실행된다.
 
-1. 브라우저가 `POST /api/analyze/ollama`로 원문과 모델명을 보낸다.
-2. 서버가 Python worker를 실행해 인물·장소·상태·사건 문장 후보를 만든다.
-3. `kiwipiepy`가 없으면 Python 정규식 분석기로 전환한다.
-4. Python 실행 자체가 실패하면 Node 정규식 분석기로 전환한다.
-5. 서버가 원문과 전처리 문맥을 Ollama `/api/generate`에 전달한다.
-6. Ollama JSON에서 동적 seed를 만들고 브라우저 분석을 실행한다.
-7. Ollama 객체가 실제 원문 mention과 연결될 때 분석 결과에 병합한다.
-8. 동적 seed에서 인물 mention을 하나도 찾지 못하면 브라우저 규칙 분석으로 다시 실행한다.
+1. 브라우저가 `POST /api/analyze/ollama`(SSE)로 원문과 모델명을 보낸다.
+2. 서버가 캐시(`sha256(text+model+mode+prompt_version)`)를 조회한다.
+   `LLM Seed 재생성`은 `force`로 캐시를 우회한다.
+3. 서버가 원문을 문단 기반 장면(기본 약 2,000자)으로 나눈다. 원문 길이
+   제한이 없으며, 각 호출의 프롬프트는 `num_ctx`의 60% 이하로 예산을 검사한다.
+4. 장면마다 두 번의 소형 호출을 한다 — (a) 인물·장소 추출, (b) 사건 프레임과
+   상태 변화 추출. Ollama structured outputs(JSON Schema `format`)로 응답
+   구조를 디코딩 수준에서 강제하고, 파싱 실패는 1회 재시도한다.
+5. 앞 장면까지 확인된 인물 목록(롤링 cast)을 다음 장면 프롬프트에 전달해
+   재등장 인물의 이름 연속성을 유지한다. cast에는 2개 장면 이상 등장했거나
+   규칙 채널(정규식 후보)과 합의된 인물만 편입한다.
+6. 서버가 장면 결과를 병합한다 — 이름 정규화 dedupe, 별칭 누적, evidence가
+   해당 장면 원문에 실제 존재하는지 검증(불일치 시 confidence 강등),
+   2개 장면 이상 등장·규칙 합의 인물은 confidence 상향.
+7. 관계 pass: 원문 대신 병합된 cast·사건 프레임 요약을 입력으로 1회 호출하고,
+   허용 관계 화이트리스트 밖의 관계를 버린다.
+8. 장면별 진행(`progress`)이 SSE로 브라우저에 전달되어 버튼에 표시된다.
+   일부 장면 실패는 진단(`scenes_failed`)에 기록될 뿐 전체 실패로 번지지 않는다.
+9. 브라우저는 최종 payload로 동적 seed를 만들고 규칙 분석을 실행한 뒤,
+   Ollama 객체가 실제 원문 mention과 연결될 때만 병합한다 (기존과 동일).
+10. 동적 seed에서 인물 mention을 하나도 찾지 못하면 규칙 분석으로 재실행한다.
 
-허용 모델은 태그 또는 모델 정보에서 4B~7B로 판별되는 completion 모델이다. 요청 옵션은 `temperature: 0.1`, `num_ctx: 8192`, `format: json`이다. Ollama 프롬프트 원문은 최대 22,000자, 전처리 JSON은 최대 12,000자로 제한된다.
+상태 변화(`state_changes`)는 추출된 장면의 segment 번호(`segment_indexes`)와
+함께 반환되어 시점별 인물 상태 표시의 근거가 된다.
+
+허용 모델은 태그 또는 모델 정보에서 4B~7B로 판별되는 completion 모델이다.
+요청 옵션은 `temperature: 0.1`, `num_ctx: 8192`이다. `mode: "single"`로 기존
+단발 프롬프트(원문 22,000자 클립 + 형태소 전처리 컨텍스트)를 비교용으로 호출할
+수 있으며, 이 모드는 긴 원문에서 절단 위험이 있어 진단(`truncation_risk`)으로
+보고된다.
+
+서버 구현: `src/server/ollama_client.js`(HTTP·오류 계약), `src/server/prompts.js`
+(프롬프트·JSON Schema·토큰 예산), `src/server/pipeline.js`(장면 분할·병합),
+`src/server/cache.js`(디스크 캐시), `src/server/morph.js`(전처리).
 
 ## 7. 외부 문서 엔티티 경계 규칙
 
