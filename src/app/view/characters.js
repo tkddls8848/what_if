@@ -1,24 +1,16 @@
 import { state, els, STATUS, STATUS_LABELS } from "../context.js";
 import { statusButtons } from "../editing.js";
 import {
-  csvCell,
-  drawSvgText,
   escapeAttr,
   escapeHtml,
   eventTypeLabel,
-  getEntity,
-  isCurrentSegmentId,
   isVisibleSegmentId,
-  kindLabel,
   latestStateForCharacter,
   matchesEntityFilter,
   nameOf,
   segmentOrder,
-  sourceTextForSpan,
   statusClass,
-  statusMatches,
-  svgEl,
-  unique
+  statusMatches
 } from "../utils.js";
 
 export function renderCharacters() {

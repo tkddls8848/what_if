@@ -24,6 +24,13 @@ import {
   STATUS,
   CUSTOM_SAMPLE_ID
 } from "./config.js";
+import {
+  annotateEntityIntervals,
+  annotateRelationIntervals,
+  annotateStateIntervals
+} from "./core/asof.js";
+import { auditAnalysis } from "./core/audit.js";
+import { normalizeSourceText } from "./core/text.js";
 
 const CHARACTER_PARTICLES = [
   "에게서는", "한테서는", "에게서", "한테서", "께서는", "께서", "에게", "한테",
@@ -32,6 +39,14 @@ const CHARACTER_PARTICLES = [
 const CHARACTER_SUBJECT_PARTICLES = new Set(["에게서는", "한테서는", "에게서", "한테서", "께서는", "께서", "에게", "한테", "은", "는", "이", "가", "와", "과"]);
 const LOCATION_PARTICLES = ["에서부터", "으로부터", "에서는", "에서도", "까지", "부터", "에서", "으로", "에는", "에도", "에", "로", "을", "를", "은", "는", "이", "가", "와", "과", "의", "도"];
 const LOCATIVE_PARTICLES = new Set(["에서부터", "으로부터", "에서는", "에서도", "까지", "부터", "에서", "으로", "에는", "에도", "에", "로"]);
+
+// 긴 조사를 먼저 시도해야 `에서는`이 `에`로 잘리지 않는다.
+const CHARACTER_PARTICLE_PATTERN = particleAlternation(CHARACTER_PARTICLES);
+const LOCATION_PARTICLE_PATTERN = particleAlternation(LOCATION_PARTICLES);
+
+function particleAlternation(particles) {
+  return [...particles].sort((a, b) => b.length - a.length).map(escapeRegExp).join("|");
+}
 const HUMAN_REFERENCE_NAMES = new Set([
   "나", "너", "우리", "그녀", "그분", "이분", "저분", "마나님", "아내", "남편", "어머니", "아버지", "엄마", "아빠",
   "할머니", "할아버지", "형", "누나", "언니", "오빠", "동생", "아들", "딸", "부처", "부부", "장인", "장모", "시어머니",
@@ -132,7 +147,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((seed) => seed.name && seed.aliases.length),
-    eventTypes: (payload.event_types || payload.eventTypes || []).map((item) => {
+    eventTypes: (payload.event_types || []).map((item) => {
       const type = normalizeLexiconId(item.type || item.id || item.label);
       const label = cleanName(item.label || item.name || item.type);
       return {
@@ -143,7 +158,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((entry) => entry.type && entry.words.length),
-    mentalStates: (payload.mental_states || payload.mentalStates || payload.emotions || []).map((item) => {
+    mentalStates: (payload.mental_states || []).map((item) => {
       const stateName = cleanName(item.state || item.label || item.name);
       return {
         state: stateName,
@@ -152,7 +167,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((entry) => entry.state && entry.words.length),
-    physicalStates: (payload.physical_states || payload.physicalStates || []).map((item) => {
+    physicalStates: (payload.physical_states || []).map((item) => {
       const stateName = cleanName(item.state || item.label || item.name);
       return {
         state: stateName,
@@ -166,10 +181,9 @@ export function buildDynamicSeedLexicon(payload, model) {
 
 function collectPayloadEventNames(payload, field) {
   return unique([
-    ...(payload.events || []).flatMap((event) => listFrom(event[field]).map(cleanName)),
-    ...(payload.event_frames || payload.eventFrames || []).flatMap((frame) => {
-      if (field === "characters") return listFrom(frame.who || frame.characters).map(cleanName);
-      if (field === "locations") return listFrom(frame.where || frame.locations).map(cleanName);
+    ...(payload.event_frames || []).flatMap((frame) => {
+      if (field === "characters") return listFrom(frame.who).map(cleanName);
+      if (field === "locations") return listFrom(frame.where).map(cleanName);
       return [];
     }),
     ...(payload.relationships || []).flatMap((relationship) => {
@@ -180,7 +194,7 @@ function collectPayloadEventNames(payload, field) {
       if (field === "locations" && relationship.target_type === "location") names.push(relationship.target);
       return names.map(cleanName);
     }),
-    ...(payload.state_changes || payload.stateChanges || []).map((change) => field === "characters" ? cleanName(change.character) : "")
+    ...(payload.state_changes || []).map((change) => field === "characters" ? cleanName(change.character) : "")
   ]
     .filter(Boolean));
 }
@@ -302,7 +316,7 @@ export function applyOllamaPayload(analysis, payload, model) {
       sentence_index: 0,
       characters: relatedCharacters,
       locations: relatedLocations,
-      state_hints: normalizeOllamaStateHints(item, analysis, relatedCharacters),
+      state_hints: [],
       event_frame: item.event_frame || null,
       source_span: eventSpan,
       status: STATUS.SUGGESTED,
@@ -317,6 +331,7 @@ export function applyOllamaPayload(analysis, payload, model) {
   analysis.states = buildCharacterStates(analysis);
   analysis.relations = buildRelations(analysis);
   applyPayloadRelationships(analysis, payload, method);
+  refreshNarrativeTime(analysis);
   analysis.diagnostics.ollama = { model, applied: true };
   analysis.diagnostics.counts = {
     segments: analysis.segments.length,
@@ -330,68 +345,25 @@ export function applyOllamaPayload(analysis, payload, model) {
 }
 
 function normalizePayloadEvents(payload) {
-  const legacyEvents = (payload.events || []).map((event) => ({
-    ...event,
-    characters: listFrom(event.characters),
-    locations: listFrom(event.locations)
-  }));
-  const frameEvents = (payload.event_frames || payload.eventFrames || []).map((frame) => {
-    const summary = cleanName(frame.summary || frame.what_happened || frame.result || frame.evidence);
+  return (payload.event_frames || []).map((frame) => {
+    const summary = cleanName(frame.summary);
     return {
       type: frame.type || "background",
       summary,
-      characters: listFrom(frame.who || frame.characters),
-      locations: listFrom(frame.where || frame.locations),
-      character_states: [],
-      evidence: frame.evidence || summary,
+      characters: listFrom(frame.who),
+      locations: listFrom(frame.where),
+      evidence: frame.evidence,
       confidence: frame.confidence,
       event_frame: {
         frame_id: frame.id || "",
         label: cleanName(frame.label || ""),
-        who: listFrom(frame.who || frame.characters),
-        where: listFrom(frame.where || frame.locations),
-        when: cleanName(frame.when || ""),
+        who: listFrom(frame.who),
+        where: listFrom(frame.where),
         what_happened: cleanName(frame.what_happened || ""),
-        why_relevant: cleanName(frame.why_relevant || frame.why || ""),
         result: cleanName(frame.result || "")
       }
     };
-  });
-  return [...legacyEvents, ...frameEvents].filter((event) => cleanName(event.summary || event.evidence));
-}
-
-function normalizeOllamaStateHints(item, analysis, relatedCharacters) {
-  const rawHints = [
-    ...listFrom(item.character_states || item.characterStates || item.states),
-    ...(item.mental_state || item.emotion || item.physical_state
-      ? [{
-        character: listFrom(item.characters)[0] || "",
-        mental_state: item.mental_state || item.emotion || "",
-        physical_state: item.physical_state || ""
-      }]
-      : [])
-  ];
-
-  return rawHints.map((hint) => {
-    if (typeof hint === "string") {
-      return {
-        character_id: relatedCharacters[0] || "",
-        mental_state: cleanName(hint),
-        physical_state: "",
-        evidence: ""
-      };
-    }
-    const characterName = cleanName(hint.character || hint.name || hint.character_name);
-    const character = characterName
-      ? findEntityByNames(analysis.characters, [characterName], "character")
-      : null;
-    return {
-      character_id: character?.character_id || relatedCharacters[0] || "",
-      mental_state: cleanName(hint.mental_state || hint.emotion || hint.feeling || hint.state),
-      physical_state: cleanName(hint.physical_state || hint.body_state || ""),
-      evidence: cleanName(hint.evidence || "")
-    };
-  }).filter((hint) => hint.character_id && (hint.mental_state || hint.physical_state));
+  }).filter((event) => event.summary);
 }
 
 function resolveOllamaEventLinks(analysis, item, segment, span, method) {
@@ -505,8 +477,7 @@ function findMentionsForAliases(segments, aliases, entityType) {
   segments.forEach((segment) => {
     aliases.forEach((alias) => {
       if (!alias || alias.length < 2) return;
-      const regex = new RegExp(escapeRegExp(alias), "g");
-      for (const match of segment.text.matchAll(regex)) {
+      for (const match of segment.text.matchAll(aliasRegex(alias, entityType, "gu"))) {
         mentions.push({
           mention_id: makeId("mention", mentions.length),
           entity_type: entityType,
@@ -576,20 +547,20 @@ function firstRelatedSegment(analysis, characterIds, locationIds) {
 }
 
 function applyPayloadStateChangesToEvents(analysis, payload, method) {
-  const changes = payload.state_changes || payload.stateChanges || [];
+  const changes = payload.state_changes || [];
   changes.forEach((change) => {
-    const characterName = cleanName(change.character || change.name);
+    const characterName = cleanName(change.character);
     const character = characterName ? findEntityByNames(analysis.characters, [characterName], "character") : null;
     if (!character) return;
 
-    const event = findEventByPayloadReference(analysis, change.trigger_event || change.event || change.evidence);
+    const event = findEventByPayloadReference(analysis, change.trigger_event || change.evidence);
     if (!event) return;
 
     const after = typeof change.after === "object" && change.after ? change.after : {};
     const hint = {
       character_id: character.character_id,
-      mental_state: cleanName(after.mental_state || after.emotional_state || after.emotion || change.mental_state || change.emotion),
-      physical_state: cleanName(after.physical_state || after.body_state || change.physical_state),
+      mental_state: cleanName(after.mental_state),
+      physical_state: cleanName(after.physical_state),
       evidence: cleanName(change.evidence || ""),
       method
     };
@@ -597,7 +568,7 @@ function applyPayloadStateChangesToEvents(analysis, payload, method) {
       event.state_hints = [...(event.state_hints || []), hint];
     }
 
-    const locationName = cleanName(after.location || change.location);
+    const locationName = cleanName(after.location);
     if (locationName) {
       const locationIds = resolvePayloadEntityNames(analysis, [locationName], "location", analysis.segments.find((segment) => segment.segment_id === event.segment_id), method);
       event.locations = unique([...(event.locations || []), ...locationIds]);
@@ -614,11 +585,11 @@ function applyPayloadStateChangesToEvents(analysis, payload, method) {
 }
 
 function applyPayloadRelationships(analysis, payload, method) {
-  const relationships = payload.relationships || payload.relations || [];
+  const relationships = payload.relationships || [];
   relationships.forEach((relationship) => {
-    const sourceType = normalizeNodeType(relationship.source_type || relationship.sourceType);
-    const targetType = normalizeNodeType(relationship.target_type || relationship.targetType);
-    const relationType = normalizeSchemaRelationType(sourceType, targetType, relationship.type || relationship.relation_type);
+    const sourceType = normalizeNodeType(relationship.source_type);
+    const targetType = normalizeNodeType(relationship.target_type);
+    const relationType = normalizeSchemaRelationType(sourceType, targetType, relationship.type);
     if (!sourceType || !targetType || !relationType) return;
 
     const source = resolvePayloadNode(analysis, sourceType, relationship.source, relationship.evidence, method);
@@ -692,11 +663,8 @@ function findEventByPayloadReference(analysis, reference) {
 }
 
 function normalizeNodeType(type) {
-  const normalized = String(type || "").toLowerCase().trim();
-  if (["character", "person", "인물"].includes(normalized)) return "character";
-  if (["event", "사건"].includes(normalized)) return "event";
-  if (["location", "place", "장소"].includes(normalized)) return "location";
-  return "";
+  const normalized = String(type || "").trim();
+  return ["character", "event", "location"].includes(normalized) ? normalized : "";
 }
 
 function normalizeSchemaRelationType(sourceType, targetType, relationType) {
@@ -785,6 +753,41 @@ function includesAny(text, values) {
   return (values || []).some((value) => value && source.includes(value));
 }
 
+/**
+ * 별칭 하나를 원문에서 찾는 **단일 규칙**.
+ *
+ * mention 채널(`findSeedMentions`), 사건 채널(`extractEvents`), LLM 병합 채널
+ * (`findMentionsForAliases`)이 모두 이 함수를 쓴다. 예전에는 셋이 서로 다른 규칙을
+ * 썼다 — mention은 조사가 붙으면 거부(`복녀도` 누락), 나머지 둘은 경계 없는 substring
+ * (`감독관`의 `감독`까지 매칭). 같은 문장에 대해 채널마다 다른 답이 나왔고, 그 불일치가
+ * 그대로 `actor` 제약 위반으로 쌓였다.
+ *
+ * 규칙:
+ * - 앞: 한글로 시작하는 별칭은 한글 뒤에 붙어 있으면 안 된다(단어 내부 매칭 금지).
+ * - 뒤: 한글로 끝나는 별칭은 **조사 하나까지만** 허용하고 그 뒤는 한글이 아니어야 한다.
+ *   `복녀도`는 허용, `복녀들`은 거부. `나가서`의 `나`+`가`도 뒤에 `서`가 있어 거부된다.
+ *
+ * 조사를 허용하되 그 뒤 경계를 반드시 보는 것이 핵심이다. 둘 중 하나만 하면
+ * 누락이 남거나(경계만) 오탐이 는다(조사만).
+ */
+function aliasPattern(alias, entityType) {
+  const escaped = escapeRegExp(alias);
+  const head = /^[가-힣]/u.test(alias) ? "(?<![가-힣])" : "";
+  if (!/[가-힣]$/u.test(alias)) return `${head}${escaped}`;
+  const particles = entityType === "location" ? LOCATION_PARTICLE_PATTERN : CHARACTER_PARTICLE_PATTERN;
+  return `${head}${escaped}(?:${particles})?(?![가-힣])`;
+}
+
+function aliasRegex(alias, entityType, flags = "u") {
+  return new RegExp(aliasPattern(alias, entityType), flags);
+}
+
+/** 별칭 목록 중 하나라도 이 텍스트에 실제 표층형으로 나타나는가. */
+function matchesAliases(text, aliases, entityType) {
+  const source = String(text || "");
+  return (aliases || []).some((alias) => alias && alias.length >= 2 && aliasRegex(alias, entityType).test(source));
+}
+
 function summarizeText(text, limit = 100) {
   const cleaned = cleanName(text);
   if (cleaned.length <= limit) return cleaned;
@@ -849,7 +852,8 @@ export function analyzeNovel(input) {
   };
 
   const segments = buildSegments(normalized, document.document_id);
-  const scenes = buildScenes(segments, document.document_id);
+  // chapters가 있으면(EPUB) 실제 챕터 경계를 Scene으로 쓴다. 없으면 기존 균등 분할.
+  const scenes = buildScenes(segments, document.document_id, input.chapters || null);
   const hasStaticSeeds = hasStaticSampleSeeds(document.sample_id);
   const browserSeedLexicon = buildDocumentSeedLexicon(segments, input.seedLexicon?.model || "browser");
   const seedLexicon = input.seedLexicon
@@ -903,6 +907,7 @@ export function analyzeNovel(input) {
   analysis.events = relinkEventsWithSegmentMentions(analysis.events, analysis);
   analysis.states = buildCharacterStates(analysis);
   analysis.relations = buildRelations(analysis);
+  refreshNarrativeTime(analysis);
   analysis.diagnostics.counts = {
     segments: segments.length,
     scenes: scenes.length,
@@ -1134,13 +1139,9 @@ function normalizeMentionReferences(characters, locations, mentions) {
   });
 }
 
-function normalizeText(text) {
-  return String(text || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\t/g, " ")
-    .replace(/[ \u00a0]+/g, " ")
-    .trim();
-}
+// \uc815\uaddc\ud654\ub294 core/text.js\uac00 \ub2e8\uc77c \uc815\uc758\ub97c \uac16\ub294\ub2e4 \u2014 EPUB \ucc55\ud130 offset\uc774 \uac19\uc740 \uaddc\uce59\uc5d0
+// \uc758\uc874\ud558\ubbc0\ub85c \uc5ec\uae30\uc5d0 \ub450 \ubc88\uc9f8 \ud310\uc744 \ub9cc\ub4e4\uba74 \uacbd\uacc4\uac00 \uc5b4\uae0b\ub09c\ub2e4.
+const normalizeText = normalizeSourceText;
 
 // 서버 장면 파이프라인의 DEFAULT_TARGET_CHARS와 맞춘다. 긴 문단도 분석과
 // 화면 양쪽에서 같은 segment 경계를 사용해야 LLM 상태 변화 앵커가 어긋나지 않는다.
@@ -1211,7 +1212,43 @@ function buildSegments(text, documentId) {
   return segments;
 }
 
-function buildScenes(segments, documentId) {
+/**
+ * EPUB처럼 실제 챕터 경계를 아는 입력은 그 경계를 Scene으로 쓴다. 균등 분할은
+ * "사건 순서 탐색용 임시 단위"라는 한계를 문서에 명시해 왔는데, 챕터를 알 수 있을 때
+ * 굳이 그 근사를 쓸 이유가 없다.
+ */
+function buildChapterScenes(segments, documentId, chapters) {
+  const scenes = [];
+  chapters.forEach((chapter, index) => {
+    const chapterSegments = segments.filter((segment) =>
+      segment.char_start >= chapter.char_start && segment.char_start < chapter.char_end);
+    if (!chapterSegments.length) return;
+
+    const sceneId = makeId("scene", scenes.length);
+    chapterSegments.forEach((segment) => { segment.scene_id = sceneId; });
+    scenes.push({
+      scene_id: sceneId,
+      document_id: documentId,
+      index: scenes.length + 1,
+      title: chapter.title || `Chapter ${index + 1}`,
+      start_segment_id: chapterSegments[0].segment_id,
+      end_segment_id: chapterSegments[chapterSegments.length - 1].segment_id,
+      source_ref: chapter.source_ref || null,
+      summary: summarizeText(chapterSegments.map((segment) => segment.text).join(" "), 110)
+    });
+  });
+
+  // 챕터 밖으로 밀려난 segment가 있으면 마지막 scene에 붙여 고아를 만들지 않는다.
+  const orphan = segments.filter((segment) => !segment.scene_id);
+  if (orphan.length && scenes.length) {
+    orphan.forEach((segment) => { segment.scene_id = scenes[scenes.length - 1].scene_id; });
+    scenes[scenes.length - 1].end_segment_id = orphan[orphan.length - 1].segment_id;
+  }
+  return scenes.length ? scenes : buildScenes(segments, documentId);
+}
+
+function buildScenes(segments, documentId, chapters = null) {
+  if (chapters?.length) return buildChapterScenes(segments, documentId, chapters);
   const sceneSize = Math.max(1, Math.ceil(segments.length / Math.min(MAX_DISPLAY_SCENES, Math.max(1, segments.length))));
   const scenes = [];
   segments.forEach((segment, index) => {
@@ -1354,11 +1391,7 @@ function findSeedMentions(segments, aliases, entityType, entityId) {
       .sort((a, b) => b.length - a.length)
       .forEach((alias) => {
       if (!alias || alias.length < 2) return;
-      const escaped = escapeRegExp(alias);
-      const startsWithKorean = /^[가-힣]/u.test(alias);
-      const endsWithKorean = /[가-힣]$/u.test(alias);
-      const regex = new RegExp(`${startsWithKorean ? "(?<![가-힣])" : ""}${escaped}${endsWithKorean ? "(?![가-힣])" : ""}`, "gu");
-      for (const match of segment.text.matchAll(regex)) {
+      for (const match of segment.text.matchAll(aliasRegex(alias, entityType, "gu"))) {
         segmentMentions.push({
           mention_id: "",
           entity_type: entityType,
@@ -1389,21 +1422,21 @@ function extractEvents(segments, characters, locations, documentId, dynamicLexic
     splitSentences(segment.text).forEach((sentence, sentenceIndex) => {
       const type = inferEventType(sentence.text, dynamicLexicon);
       let characterIds = characters
-        .filter((character) => character.status !== STATUS.REJECTED && includesAny(sentence.text, character.aliases))
+        .filter((character) => character.status !== STATUS.REJECTED && matchesAliases(sentence.text, character.aliases, "character"))
         .map((character) => character.character_id);
       let locationIds = locations
-        .filter((location) => location.status !== STATUS.REJECTED && includesAny(sentence.text, location.aliases))
+        .filter((location) => location.status !== STATUS.REJECTED && matchesAliases(sentence.text, location.aliases, "location"))
         .map((location) => location.location_id);
 
       if (type !== "background" && !characterIds.length) {
         characterIds = characters
-          .filter((character) => character.status !== STATUS.REJECTED && includesAny(segment.text, character.aliases))
+          .filter((character) => character.status !== STATUS.REJECTED && matchesAliases(segment.text, character.aliases, "character"))
           .map((character) => character.character_id);
       }
 
       if (type !== "background" && !locationIds.length) {
         locationIds = locations
-          .filter((location) => location.status !== STATUS.REJECTED && includesAny(segment.text, location.aliases))
+          .filter((location) => location.status !== STATUS.REJECTED && matchesAliases(segment.text, location.aliases, "location"))
           .map((location) => location.location_id);
       }
 
@@ -1505,7 +1538,7 @@ export function buildCharacterStates(analysis) {
       });
     });
   });
-  return states;
+  return annotateStateIntervals(analysis, states);
 }
 
 function stateHintForCharacter(events, characterId) {
@@ -1593,5 +1626,22 @@ export function buildRelations(analysis) {
     });
   });
 
-  return relations;
+  return annotateRelationIntervals(analysis, relations);
+}
+
+/**
+ * 검수 편집 이후 시간 구간과 제약 감사를 다시 계산한다.
+ *
+ * `buildCharacterStates`/`buildRelations`는 각자 자기 구간을 부여하지만, 인물·장소
+ * 구간과 감사 결과는 문서 전체를 봐야 하므로 여기서 한 번에 갱신한다. 편집 경로가
+ * 이 함수를 부르지 않으면 `/check` 배지와 진단이 옛 값으로 남는다.
+ */
+export function refreshNarrativeTime(analysis) {
+  if (!analysis) return analysis;
+  annotateEntityIntervals(analysis);
+  annotateStateIntervals(analysis, analysis.states || []);
+  annotateRelationIntervals(analysis, analysis.relations || []);
+  analysis.diagnostics = analysis.diagnostics || {};
+  analysis.diagnostics.audit = auditAnalysis(analysis);
+  return analysis;
 }

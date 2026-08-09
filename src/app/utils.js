@@ -6,15 +6,19 @@
  * module is browser-only by design.
  *
  * BOUNDARY NOTE — intentional duplication:
- * A few generic text helpers here (`unique`, `makeId`, `escapeRegExp`, `includesAny`,
+ * A few generic text helpers here (`unique`, `makeId`,
  * `summarizeText`) share names with PRIVATE helpers inside `../analyzer.js`. That is
  * intentional: `analyzer.js` is the DOM-free analysis core and keeps its own self-
  * contained copies on purpose. These two modules are independent — do not merge them.
  */
 import { state, els, $$, STATUS, EVENT_LABELS } from "./context.js";
-import { currentRoute, isCheckRoute } from "./view/router.js";
+import { isKnownAt, resolveTime } from "../core/asof.js";
+import { isCheckRoute } from "./view/router.js";
+// views.js ↔ 뷰 모듈은 순환 import다. `renderAll`이 함수 선언이라 호이스팅되고
+// 로드 시점에 호출하지 않으므로 안전하다 — `editing.js`도 같은 방식이다.
+import { renderAll } from "./views.js";
 
-export { currentRoute, isCheckRoute };
+export { isCheckRoute };
 
 export function getEntity(kind, id) {
   if (!state.analysis) return null;
@@ -96,10 +100,25 @@ export function matchesEntityFilter(kind, id) {
   return state.filters.entity === "all" || state.filters.entity === `${kind}:${id}`;
 }
 
+/**
+ * 검수 화면은 시점 제한 없이 전체를 본다. 그 예외를 포함한 "지금 유효한 시점"은
+ * 이 함수 하나가 정한다.
+ */
+export function currentSpoilerSafe() {
+  return state.spoilerSafe && !isCheckRoute();
+}
+
+export function currentScopeTime() {
+  return resolveTime(state.analysis, state.currentSegment, currentSpoilerSafe());
+}
+
+/**
+ * BOUNDARY NOTE: 시점 비교(`index <= t`)는 여기서 하지 않는다. `core/asof.js`의
+ * `isKnownAt`에 위임해 스포일러 판정이 저장소에 한 벌만 존재하도록 유지한다.
+ */
 export function isVisibleSegmentId(segmentId) {
-  const order = segmentOrder(segmentId);
-  if (!order) return false;
-  return isCheckRoute() || !state.spoilerSafe || order <= state.currentSegment;
+  if (!state.analysis) return false;
+  return isKnownAt({ valid_from: segmentOrder(segmentId) }, currentScopeTime());
 }
 
 export function isCurrentSegmentId(segmentId) {
@@ -108,10 +127,6 @@ export function isCurrentSegmentId(segmentId) {
 
 export function segmentOrder(segmentId) {
   return state.analysis?.segments.find((segment) => segment.segment_id === segmentId)?.index || 0;
-}
-
-export function includesAny(text, words) {
-  return words.some((word) => text.includes(word));
 }
 
 export function summarizeText(text, limit) {
@@ -125,10 +140,6 @@ export function unique(values) {
 
 export function makeId(prefix, index) {
   return `${prefix}_${String(index + 1).padStart(3, "0")}`;
-}
-
-export function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function csvCell(value) {

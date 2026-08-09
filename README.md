@@ -1,156 +1,118 @@
 # Novel IF Reader
 
-한국어 소설 원문에서 인물, 장소, 사건, 인물 상태와 관계를 추출하고 독서 진행 위치에 맞춰 시각화하는 로컬 웹 애플리케이션입니다. **빠른 분석**은 즉시 실행되며, 선택적으로 **상세 분석**에서 Ollama의 4B~7B 로컬 AI 모델을 이용해 추출 결과를 보강할 수 있습니다.
+한국어 소설에서 인물·장소·사건·상태 변화를 추출하고, 독서 시점 기준으로 조회하거나 what-if 분기를 만드는 로컬 웹 앱입니다. 규칙 기반 분석은 즉시 실행되고, Ollama 4B~7B 모델을 사용하면 상세 분석을 추가할 수 있습니다.
 
-## 주요 기능
+## 실행
 
-- 이상 「날개」와 김동인 「감자」 샘플 제공
-- 로컬 TXT 파일 업로드 및 편집한 원문 재분석
-- 문단 기반 세그먼트·장면 구성
-- 인물, 장소, 사건, 상태 변화와 관계 추출
-- 빠른 분석(규칙 기반) 및 상세 분석(로컬 AI 보강)
-- 독서 위치 슬라이더와 이후 정보 숨김(스포일러 차단)
-- 관계 그래프, 사건 타임라인, 인물별 상태·관계·이동 경로 표시
-- `/check` 화면에서 추출 결과 확정·수정·제외 및 사건 수동 추가
-- 현재 원문과 분석 결과를 브라우저 `localStorage`에 저장·복원
-- JSON, CSV, Markdown, TimelineJS, Graph JSON 형식 출력 및 클립보드 복사
-
-## 요구 사항
-
-- Node.js 18 이상
-- npm
-
-상세 분석을 사용할 때만 다음 항목이 추가로 필요합니다.
-
-- Ollama 서버
-- 태그 또는 모델 정보로 판별 가능한 4B~7B completion 모델
-- 선택 사항: Python 3와 `kiwipiepy`
-
-Python이나 `kiwipiepy`를 사용할 수 없으면 서버의 정규식 전처리로 자동 대체되며, 빠른 분석은 이 구성과 무관하게 동작합니다.
-
-## 설치 및 실행
+요구 사항은 Node.js와 npm입니다(v23.3에서 검증). 상세 분석과 what-if에는 별도로 실행 중인 Ollama가 필요합니다. EPUB 읽기는 표준 `DecompressionStream("deflate-raw")`에 의존하므로, 이 API가 없는 구버전 Node에서는 EPUB 경로와 해당 테스트가 동작하지 않습니다.
 
 ```powershell
-cd D:\novel_if
 npm install
 npm start
 ```
 
-PowerShell 실행 정책으로 `npm.ps1`이 차단되는 환경에서는 `npm` 대신 `npm.cmd`를 사용합니다.
+- 분석: <http://localhost:3000/>
+- 검수: <http://localhost:3000/check>
+- 테스트: `npm test`
+- 개발 감시: `npm run dev`
 
-```powershell
-npm.cmd install
-npm.cmd start
-```
-
-서버가 시작되면 다음 주소를 엽니다.
-
-- 분석 화면: <http://localhost:3000/>
-- 결과 검수 화면: <http://localhost:3000/check>
-
-개발 중 파일 변경을 감시하려면 다음 명령을 사용합니다.
-
-```powershell
-npm run dev
-```
-
-분석기 회귀 테스트는 다음 명령으로 실행합니다.
-
-```powershell
-npm test
-```
-
-## 상세 분석 설정
-
-기본 Ollama API 주소는 `http://127.0.0.1:11434`, 기본 모델은 `qwen3.5:4b`입니다. 화면의 **분석 방식**에서 **상세 분석 (로컬 AI)**을 선택하면 서버가 Ollama에 구조화된 분석을 요청하고 빠른 분석 결과와 병합합니다. **상세 분석 새로 실행**은 기존 캐시를 사용하지 않고 다시 분석합니다.
-
-화면에는 서버에서 확인된 4B~7B 모델과 다음 기본 후보가 표시됩니다.
-
-- `qwen3.5:4b`
-- `gemma4:e4b`
-- `gemma3:4b`
-- `qwen3:4b`
-
-필요하면 실행 전에 환경 변수를 지정할 수 있습니다.
+기본 Ollama 주소는 `http://127.0.0.1:11434`, 기본 모델은 `qwen3.5:4b`입니다.
 
 ```powershell
 $env:PORT = "3000"
 $env:OLLAMA_URL = "http://127.0.0.1:11434"
-$env:PYTHON = "python"
-npm.cmd start
+$env:OLLAMA_TIMEOUT_MS = "120000"
+npm start
 ```
 
-형태소 분석을 사용하려면 선택적으로 설치합니다.
+분석 캐시는 `cache/`에 저장됩니다. `NOVEL_IF_CACHE=0`으로 끄거나 `NOVEL_IF_CACHE_DIR`로 위치를 바꿀 수 있습니다.
+
+## 기능
+
+- 「날개」, 「감자」 샘플과 TXT·EPUB·위키문헌 입력
+- 규칙 기반 빠른 분석과 Ollama 장면 단위 상세 분석
+- 독서 위치 이후 정보를 숨기는 as-of 조회
+- 관계 지도, 사건 흐름, 인물 상태, 근거 검수
+- 분석 결과 수정·제외와 수동 사건 추가
+- what-if 사건·상태 생성 및 원작 이후 내용 누출 검사
+- JSON, CSV, Markdown, TimelineJS, Graph, ink, Twee 출력
+- 브라우저 `localStorage` 저장
+- 읽기 전용 MCP 도구
+
+EPUB은 챕터 경계를 Scene으로 사용합니다. 위키문헌 입력의 권리는 자동 판정하지 않으며 `unverified`로 기록합니다.
+
+## 상세 분석 계약
+
+`POST /api/analyze/ollama`는 원문을 약 1,000자 장면으로 나누고 다음 순서로 처리합니다.
+
+1. 인물·장소 추출
+2. 사건 프레임·상태 변화 추출
+3. 전체 관계 추출
+4. 원문 근거 검증과 규칙 분석 결과 병합
+
+요청 body는 `{ text, model, force? }`입니다. `Accept: text/event-stream`을 보내면 `progress`와 `done` 또는 `error` 이벤트를 반환합니다.
+
+그 밖의 API:
+
+- `GET /api/ollama/health`
+- `GET /api/ollama/models`
+- `GET /api/import/wikisource?url=...`
+- `POST /api/whatif`
+
+what-if 요청은 `{ seed, premise?, count?, model }` 형식입니다. `seed`에는 분기 시점 스냅샷만 허용하며 원문이나 이후 사건은 허용하지 않습니다.
+
+## MCP
 
 ```powershell
-python -m pip install kiwipiepy
+npm run mcp
 ```
 
-## 사용 흐름
+MCP 서버는 `mcp/server.js`입니다. `NOVEL_IF_LIBRARY`를 지정하지 않으면 `texts/`를 읽습니다.
 
-1. 샘플을 선택하거나 **TXT 열기**로 원문을 불러옵니다.
-2. 분석 방식을 선택하고 **원문 분석**을 실행합니다.
-3. 독서 위치와 스포일러 차단 여부를 조절하며 관계 지도, 사건 흐름, 인물 상태를 확인합니다.
-4. **검수** 화면에서 결과의 상태와 내용을 수정합니다.
-5. 현재 결과를 브라우저에 저장하거나 필요한 형식으로 출력해 복사합니다.
+제공 도구:
 
-## 프로젝트 구조
+- `list_works`
+- `state_as_of`
+- `who_is`
+- `timeline_as_of`
+- `graph_as_of`
+- `evidence_for`
+- `arc_summary`
+- `whatif_seed`
+- `read_segment`
+
+사실 조회에는 `as_of`가 필요합니다. `rights`가 `public-domain`으로 시작하지 않는 작품은 원문 단락을 반환하지 않습니다.
+
+## 구조
 
 ```text
-novel_if/
-├─ index.html                 # 분석 및 검수 화면 마크업
-├─ styles.css                # 전체 UI 스타일
-├─ server.js                 # Express 정적 서버와 Ollama API 중계
-├─ src/
-│  ├─ config.js              # 샘플, 상태, seed, 사건·상태 사전
-│  ├─ analyzer.js            # 규칙 분석 및 Ollama 결과 병합
-│  └─ app/
-│     ├─ controller.js        # 초기화, 입력, 분석, 저장 이벤트
-│     ├─ context.js           # 애플리케이션 상태와 DOM 참조
-│     ├─ editing.js           # 검수 상태 변경과 수동 편집
-│     └─ view/                # Reader, Map, Timeline, Character, Review, Export
-├─ scripts/
-│  └─ korean_morph.py         # Kiwi/정규식 기반 한국어 전처리
-└─ texts/
-   ├─ wings.txt              # 이상 「날개」
-   └─ gamja.txt               # 김동인 「감자」
+server.js                 Express 서버와 API
+src/analyzer.js           규칙 분석과 Ollama 결과 병합
+src/core/                 as-of, 감사, 근거, EPUB, 분기, 출력, 정규화
+src/server/               Ollama 장면 파이프라인, what-if 생성, 위키문헌
+src/app/                  브라우저 상태·이벤트·뷰
+mcp/                      읽기 전용 MCP 어댑터
+scripts/                  평가·감사 CLI
+tests/                    회귀 테스트와 fixture
+texts/                    기본 작품
+doc/                      기술 설계와 데이터 계약
+doc_nextsession/          다음 작업 목록
+.claude/skills/           분석·검수·평가 절차
 ```
 
-별도의 빌드 단계나 데이터베이스는 없습니다. 브라우저 코드는 ES modules로 로드되고, 저장 기능은 현재 브라우저의 `localStorage`만 사용합니다.
+모듈 종류는 디렉터리별 `package.json`이 정한다. `src/`와 `mcp/`는 ESM,
+`src/server/`와 루트 `server.js`는 CommonJS다.
 
-## 서버 API
+설계 근거와 데이터 계약은 [`doc/README.md`](doc/README.md),
+다음 우선순위는 [`doc_nextsession/README.md`](doc_nextsession/README.md)에 있다.
 
-- `GET /api/ollama/health`: Ollama 도달성, 허용 모델, Python 전처리 가용성, 캐시 상태 진단
-- `GET /api/ollama/models`: 연결된 Ollama에서 사용 가능한 4B~7B completion 모델 조회
-- `POST /api/analyze/ollama`: 원문과 모델명을 받아 LLM 구조화 분석 실행
-  - body: `{ text, model, mode, force }`
-  - `mode: "scene"`(기본) — 원문을 약 1,000자 분석 청크로 나눠 인물·장소 → 사건·상태 →
-    관계 순서로 소형 호출을 반복하는 map-reduce 파이프라인. **원문 길이 제한이
-    없고** 컨텍스트 절단이 발생하지 않는다
-  - `mode: "single"` — 기존 단발 프롬프트 (비교·회귀용, 긴 원문은 절단될 수 있음)
-  - `force: true` — 서버 캐시를 우회하고 새로 분석 ("상세 분석 새로 실행" 버튼)
-  - `Accept: text/event-stream`이면 SSE로 `progress`(분석 청크 진행) → `done`/`error`
-    이벤트를 보낸다. 화면은 청크 진행률을 버튼에 표시한다
-- 오류는 `{ok:false, error_code, message, retryable}` 형식이다
-  (`CONNECTION_FAILED`, `TIMEOUT`, `UPSTREAM_ERROR`, `PARSE_FAILED` 등)
-
-같은 원문·모델·모드의 결과는 `cache/`에 저장되어 즉시 재사용된다.
-환경 변수: `OLLAMA_TIMEOUT_MS`(기본 120000), `NOVEL_IF_CACHE=0`(캐시 비활성),
-`NOVEL_IF_CACHE_DIR`(캐시 위치).
-
-## 추출 품질 평가
-
-골든셋(`tests/fixtures/golden/`) 기준 precision/recall 리포트:
+## 평가
 
 ```powershell
-node scripts/eval_extraction.mjs                      # 규칙 채널 + fixture LLM 채널
-node scripts/eval_extraction.mjs --live qwen3.5:4b    # 실제 Ollama 장면 파이프라인 포함
+npm run eval
+npm run eval -- --live qwen3.5:4b
+npm run eval:qa
+npm run audit -- --doc gamja --severity error
 ```
 
-## 현재 제약
-
-- 규칙 분석은 사전과 패턴 기반이므로 문학적 중의성, 생략된 주체, 상징 관계를 정확히 판정하지 못할 수 있습니다.
-- 상세 분석 품질과 처리 시간은 선택한 로컬 AI 모델과 실행 환경에 따라 달라집니다.
-- 저장 결과는 서버가 아니라 현재 브라우저에만 남으며 사용자·기기 간 동기화되지 않습니다.
-- 내보내기는 다운로드 파일을 생성하지 않고 텍스트 출력과 클립보드 복사를 제공합니다.
-- 분석 결과는 자동 확정값이 아니라 근거 문장과 신뢰도를 확인하고 검수하는 것을 전제로 합니다.
+규칙 분석은 패턴 기반이므로 생략된 주체와 문학적 중의성을 완전히 판정하지 못합니다. 상세 분석 결과와 what-if 생성물은 자동 확정하지 않고 `suggested` 상태로 보관합니다.

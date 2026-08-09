@@ -22,7 +22,7 @@ export const SAMPLE_TEXTS = [
     rights: "public-domain-old-70"
   }
 ];
-export const SNAPSHOT_KEY = "novel-if-reader:snapshot:v2";
+export const SNAPSHOT_KEY = "novel-if-reader:snapshot";
 
 export const STATUS = {
   SUGGESTED: "suggested",

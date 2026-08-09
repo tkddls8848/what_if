@@ -4,9 +4,19 @@ import { renderGraph, renderInspector } from "./view/map.js";
 import { renderTimeline } from "./view/timeline.js";
 import { renderCharacters } from "./view/characters.js";
 import { renderReview, renderCheckSummary, focusSelectionSegment } from "./view/review.js";
-import { renderExport } from "./view/export.js";
+import { renderExport, downloadExport } from "./view/export.js";
+import { renderWhatIf, resetWhatIf, handleWhatIfAction, handleRubricInput } from "./view/whatif.js";
 
-export { activateRoute, isCheckRoute, focusSelectionSegment, renderExport };
+export {
+  activateRoute,
+  isCheckRoute,
+  focusSelectionSegment,
+  renderExport,
+  downloadExport,
+  resetWhatIf,
+  handleWhatIfAction,
+  handleRubricInput
+};
 
 export function renderAll() {
   renderRoute();
@@ -16,6 +26,7 @@ export function renderAll() {
   renderInspector();
   renderTimeline();
   renderCharacters();
+  renderWhatIf();
   renderReview();
   renderCheckSummary();
   renderExport();

@@ -1,24 +1,17 @@
 import { state, els, STATUS, STATUS_LABELS } from "../context.js";
 import { statusButtons } from "../editing.js";
+import { violationsFor } from "../../core/audit.js";
 import {
-  csvCell,
-  drawSvgText,
   escapeAttr,
   escapeHtml,
   eventTypeLabel,
   getEntity,
-  isCurrentSegmentId,
   isVisibleSegmentId,
   kindLabel,
-  latestStateForCharacter,
-  matchesEntityFilter,
   nameOf,
   segmentOrder,
-  sourceTextForSpan,
   statusClass,
-  statusMatches,
-  svgEl,
-  unique
+  statusMatches
 } from "../utils.js";
 
 export function renderReview() {
@@ -39,12 +32,14 @@ export function renderReview() {
       const segmentId = kind === "event" ? item.segment_id : item.first_segment_id;
       return isVisibleSegmentId(segmentId);
     })
-    .sort((a, b) => (a.item.confidence || 0) - (b.item.confidence || 0));
+    .map((entry) => ({ ...entry, violations: reviewViolations(analysis, entry.kind, entry.id) }))
+    // 제약 위반(error)이 있는 항목을 먼저, 그 다음은 기존 규칙대로 신뢰도 오름차순.
+    .sort((a, b) => errorRank(a.violations) - errorRank(b.violations) || (a.item.confidence || 0) - (b.item.confidence || 0));
 
   els.reviewStats.textContent = `${items.length}개`;
   els.reviewList.innerHTML = items.length ? "" : `<div class="empty-state">검수할 항목이 없습니다.</div>`;
 
-  items.forEach(({ kind, id, item }) => {
+  items.forEach(({ kind, id, item, violations }) => {
     const row = document.createElement("article");
     row.className = `review-item ${statusClass(item.status)} ${state.selected?.kind === kind && state.selected?.id === id ? "selected" : ""}`;
     const title = item.canonical_name || item.name || item.summary;
@@ -63,10 +58,55 @@ export function renderReview() {
         <span>${Math.round((item.confidence || 0) * 100)}%</span>
         <span>${item.method || "manual"}</span>
       </div>
+      ${renderViolations(violations)}
       <div class="button-row">${statusButtons(kind, id)}</div>
     `;
     els.reviewList.appendChild(row);
   });
+}
+
+const VIOLATION_LABELS = {
+  actor: "행위자",
+  scope: "근거 범위",
+  polarity: "부정문",
+  state: "상태 모순",
+  temporal: "시간 순서"
+};
+
+/**
+ * 검수 항목 하나에 걸린 제약 위반.
+ *
+ * 감사 결과는 사건·언급·상태·관계에 붙는다. 인물/장소 행에는 직접 걸리는 위반이
+ * 없으므로, 그 인물의 상태 레코드나 그 장소를 가리키는 상태의 위반을 끌어와
+ * 검수자가 한 행에서 원인을 볼 수 있게 한다.
+ */
+function reviewViolations(analysis, kind, id) {
+  const audit = analysis.diagnostics?.audit;
+  if (!audit) return [];
+  if (kind === "event") return violationsFor(audit, "event", id);
+
+  const stateIds = new Set(
+    analysis.states
+      .filter((item) => (kind === "character" ? item.character_id === id : item.location_id === id))
+      .map((item) => item.state_id)
+  );
+  return (audit.violations || []).filter((violation) =>
+    violation.target_type === "state" && stateIds.has(violation.target_id)
+  );
+}
+
+function errorRank(violations) {
+  return violations.some((violation) => violation.severity === "error") ? 0 : 1;
+}
+
+function renderViolations(violations) {
+  if (!violations?.length) return "";
+  const badges = violations.slice(0, 4).map((violation) => `
+    <span class="audit-badge ${violation.severity}" title="${escapeAttr(violation.message)}">
+      ${VIOLATION_LABELS[violation.code] || violation.code}
+    </span>
+  `).join("");
+  return `<div class="audit-row">${badges}${violations.length > 4 ? `<span class="audit-badge more">+${violations.length - 4}</span>` : ""}</div>`;
 }
 
 function segmentIdForEntity(kind, id) {
@@ -100,12 +140,15 @@ export function renderCheckSummary() {
     edited: reviewables.filter((item) => item.status === STATUS.EDITED).length,
     rejected: reviewables.filter((item) => item.status === STATUS.REJECTED).length
   };
+  const audit = analysis.diagnostics?.audit?.counts || { error: 0, warn: 0 };
   els.checkSummary.innerHTML = `
     <div><strong>${counts.total}</strong><span>전체</span></div>
     <div><strong>${counts.suggested}</strong><span>제안</span></div>
     <div><strong>${counts.confirmed}</strong><span>확정</span></div>
     <div><strong>${counts.edited}</strong><span>수정</span></div>
     <div><strong>${counts.rejected}</strong><span>제외</span></div>
+    <div class="audit-count error"><strong>${audit.error || 0}</strong><span>제약 위반</span></div>
+    <div class="audit-count warn"><strong>${audit.warn || 0}</strong><span>확인 필요</span></div>
   `;
 }
 

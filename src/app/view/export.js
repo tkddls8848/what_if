@@ -1,42 +1,72 @@
 import { state, els, STATUS_LABELS } from "../context.js";
 import { selectScopedAnalysis } from "./selectors.js";
+import { toInk, toTwee } from "../../core/export_if.js";
 import {
   csvCell,
-  drawSvgText,
-  escapeAttr,
+  currentScopeTime,
+  currentSpoilerSafe,
   escapeHtml,
   eventTypeLabel,
-  getEntity,
-  isCurrentSegmentId,
-  isVisibleSegmentId,
-  kindLabel,
-  latestStateForCharacter,
-  matchesEntityFilter,
   nameOf,
-  segmentOrder,
-  sourceTextForSpan,
-  statusClass,
-  statusMatches,
-  svgEl,
-  unique
+  sourceTextForSpan
 } from "../utils.js";
+
+/** 형식별 파일 확장자와 MIME. 다운로드 이름을 만들 때 쓴다. */
+const FORMAT_FILES = {
+  json: { ext: "json", mime: "application/json" },
+  csv: { ext: "csv", mime: "text/csv" },
+  markdown: { ext: "md", mime: "text/markdown" },
+  timelinejs: { ext: "timeline.json", mime: "application/json" },
+  graph: { ext: "graph.json", mime: "application/json" },
+  ink: { ext: "ink", mime: "text/plain" },
+  twee: { ext: "twee", mime: "text/plain" }
+};
 
 export function renderExport() {
   if (!state.analysis) {
     els.exportOutput.value = "";
     return;
   }
-  if (state.exportFormat === "csv") {
-    els.exportOutput.value = toCsv(selectScopedAnalysis());
-  } else if (state.exportFormat === "markdown") {
-    els.exportOutput.value = toMarkdown(selectScopedAnalysis());
-  } else if (state.exportFormat === "timelinejs") {
-    els.exportOutput.value = JSON.stringify(toTimelineJs(selectScopedAnalysis()), null, 2);
-  } else if (state.exportFormat === "graph") {
-    els.exportOutput.value = JSON.stringify(toGraphJson(selectScopedAnalysis()), null, 2);
-  } else {
-    els.exportOutput.value = JSON.stringify(selectScopedAnalysis(), null, 2);
+  els.exportOutput.value = buildExport(state.exportFormat);
+}
+
+function buildExport(format) {
+  // ink/Twee는 분기를 포함하므로 시점 범위를 직접 넘긴다. 나머지는 기존 scope를 쓴다.
+  if (format === "ink") {
+    return toInk(state.analysis, { spoilerSafe: currentSpoilerSafe(), at: currentScopeTime() });
   }
+  if (format === "twee") {
+    return toTwee(state.analysis, { spoilerSafe: currentSpoilerSafe(), at: currentScopeTime() });
+  }
+  if (format === "csv") return toCsv(selectScopedAnalysis());
+  if (format === "markdown") return toMarkdown(selectScopedAnalysis());
+  if (format === "timelinejs") return JSON.stringify(toTimelineJs(selectScopedAnalysis()), null, 2);
+  if (format === "graph") return JSON.stringify(toGraphJson(selectScopedAnalysis()), null, 2);
+  return JSON.stringify(selectScopedAnalysis(), null, 2);
+}
+
+/**
+ * 현재 내보내기 결과를 파일로 저장한다. 지금까지는 클립보드 복사만 있었지만,
+ * ink/Twee는 컴파일러에 넣어야 하므로 파일이 필요하다.
+ */
+export function downloadExport() {
+  if (!state.analysis) return;
+  const format = state.exportFormat || "json";
+  const file = FORMAT_FILES[format] || FORMAT_FILES.json;
+  const name = safeFileName(state.analysis.document?.title || "novel-if");
+  const blob = new Blob([els.exportOutput.value || buildExport(format)], { type: `${file.mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${name}.${file.ext}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFileName(value) {
+  return String(value).replace(/[\\/:*?"<>|]/gu, "_").replace(/\s+/gu, "_").slice(0, 60) || "novel-if";
 }
 
 function toCsv(payload) {

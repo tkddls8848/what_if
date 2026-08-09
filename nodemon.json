@@ -1,15 +1,6 @@
 {
-  "watch": [
-    "server.js",
-    "index.html",
-    "app.js",
-    "styles.css",
-    "texts"
-  ],
+  "watch": ["server.js", "src", "mcp", "index.html", "styles.css", "texts"],
   "ext": "js,html,css,txt",
-  "ignore": [
-    "node_modules",
-    ".git"
-  ],
+  "ignore": ["node_modules", ".git", "cache"],
   "delay": "150ms"
 }

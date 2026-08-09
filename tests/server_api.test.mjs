@@ -14,6 +14,9 @@ process.env.OLLAMA_TIMEOUT_MS = "4000";
 const serverModule = await import("../server.js");
 const { app } = serverModule.default || serverModule;
 
+const { analyzeNovel } = await import("../src/analyzer.js");
+const { branchSeed, normalizeBranch } = await import("../src/core/whatif.js");
+
 const MINI_NOVEL = `복녀는 가난한 집에서 자랐다. 복녀는 남편을 따라 칠성문 밖 빈민굴로 왔다.
 
 왕 서방이 복녀를 불렀다. 복녀는 왕 서방의 밭으로 갔다.`;
@@ -27,6 +30,9 @@ function entitiesFor(prompt) {
   if (prompt.includes("빈민굴")) locations.push({ name: "빈민굴", aliases: [], evidence: "빈민굴", confidence: 0.8 });
   return { characters, locations };
 }
+
+/** fake Ollama가 실제로 받은 프롬프트. "미래를 보내지 않는다"를 전송 수준에서 검증한다. */
+const sentPrompts = [];
 
 /** 스크립트된 fake Ollama HTTP 서버 */
 function startFakeOllama() {
@@ -46,8 +52,19 @@ function startFakeOllama() {
       }
       if (req.url === "/api/generate") {
         const { prompt } = JSON.parse(body);
+        sentPrompts.push(prompt);
         let data = {};
-        if (prompt.includes("인물과 장소만 추출")) data = entitiesFor(prompt);
+        if (prompt.includes("달리 행동했다면")) {
+          data = { alternatives: [{ actor: "복녀", premise: "복녀가 왕 서방의 밭에 가지 않았다면" }] };
+        } else if (prompt.includes("반사실 전개")) {
+          data = {
+            events: [
+              { type: "conflict", summary: "복녀는 제안을 거절하고 집으로 돌아섰다.", characters: ["복녀"], confidence: 0.6 },
+              { type: "movement", summary: "복녀는 빈민굴로 향했다.", characters: ["복녀"], locations: ["빈민굴"] }
+            ],
+            state_changes: [{ character: "복녀", mental_state: "결심", after_event_order: 1 }]
+          };
+        } else if (prompt.includes("인물과 장소만 추출")) data = entitiesFor(prompt);
         else if (prompt.includes("사건 프레임과 인물 상태 변화만")) {
           data = {
             event_frames: prompt.includes("빈민굴로 왔다")
@@ -98,9 +115,8 @@ test("GET /api/ollama/health: 도달성·허용 모델·캐시 상태를 보고�
   assert.equal(body.ok, true);
   assert.equal(body.ollama.reachable, true);
   assert.deepEqual(body.ollama.allowed_models, ["qwen3.5:4b"]);
-  assert.ok("available" in body.python);
   assert.equal(body.cache.enabled, false);
-  assert.equal(body.pipeline.default_mode, "scene");
+  assert.equal(body.pipeline.prompt_version, "scene-v2");
 });
 
 test("GET /api/ollama/models: 허용 모델만 반환한다", async () => {
@@ -129,7 +145,7 @@ test("POST /api/analyze/ollama: 비허용 모델은 400", async () => {
   assert.equal(response.status, 400);
 });
 
-test("POST /api/analyze/ollama (scene, 비스트림): 병합 결과와 진단을 반환한다", async () => {
+test("POST /api/analyze/ollama (비스트림): 병합 결과와 진단을 반환한다", async () => {
   const response = await fetch(`${api.url}/api/analyze/ollama`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -137,7 +153,6 @@ test("POST /api/analyze/ollama (scene, 비스트림): 병합 결과와 진단을
   });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.mode, "scene");
   const names = body.analysis.characters.map((item) => item.name);
   assert.ok(names.includes("복녀"));
   assert.equal(body.diagnostics.cache, "miss");
@@ -180,6 +195,61 @@ test("캐시 활성 시 두 번째 요청은 hit, force는 우회한다", async 
   } finally {
     process.env.NOVEL_IF_CACHE = "0";
   }
+});
+
+test("POST /api/whatif: 원문 없이 시드만으로 분기를 생성한다", async () => {
+  const analysis = analyzeNovel({ text: MINI_NOVEL, title: "mini", sample: { id: "custom" } });
+  const seed = branchSeed(analysis, 1);
+  sentPrompts.length = 0;
+
+  const response = await fetch(`${api.url}/api/whatif`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seed, model: "qwen3.5:4b", count: 1 })
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+
+  assert.equal(body.alternatives.length, 1);
+  assert.ok(body.alternatives[0].premise);
+  assert.equal(body.diagnostics.fork_segment, 1);
+  assert.ok(body.diagnostics.calls >= 2, "제안 호출 + 전개 호출");
+
+  // 전송된 프롬프트에 분기 이후 원문이 들어가면 안 된다.
+  const future = analysis.segments.filter((segment) => segment.index > 1);
+  sentPrompts.forEach((prompt) => {
+    future.forEach((segment) => {
+      const sentence = segment.text.replace(/\s+/gu, " ").slice(0, 20);
+      assert.ok(!prompt.includes(sentence), `프롬프트에 단락 ${segment.index} 내용이 있다`);
+    });
+  });
+
+  const branch = normalizeBranch(analysis, body.alternatives[0].payload, {
+    forkSegment: 1, premise: body.alternatives[0].premise, model: body.model
+  });
+  assert.ok(branch.events.length > 0);
+  assert.deepEqual(branch.diagnostics.canon_leak, []);
+});
+
+test("POST /api/whatif: seed에 원문을 실어 보내면 거부한다", async () => {
+  const response = await fetch(`${api.url}/api/whatif`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seed: { fork_segment: 2, text: MINI_NOVEL }, model: "qwen3.5:4b" })
+  });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error_code, "INVALID_ARGUMENT");
+  assert.match(body.message, /원문을 넣지 마세요/u);
+});
+
+test("POST /api/whatif: fork_segment 없으면 400", async () => {
+  const response = await fetch(`${api.url}/api/whatif`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seed: {}, model: "qwen3.5:4b" })
+  });
+  assert.equal(response.status, 400);
 });
 
 test("Ollama 미기동이면 502와 CONNECTION_FAILED를 반환한다", async () => {

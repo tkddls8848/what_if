@@ -1,24 +1,13 @@
 import { state, els, STATUS_LABELS } from "../context.js";
+import { renderAll } from "../views.js";
 import { selectVisibleEvents } from "./selectors.js";
 import {
-  csvCell,
-  drawSvgText,
-  escapeAttr,
+  activateTab,
   escapeHtml,
   eventTypeLabel,
-  getEntity,
-  isCurrentSegmentId,
-  isVisibleSegmentId,
-  kindLabel,
-  latestStateForCharacter,
-  matchesEntityFilter,
   nameOf,
-  segmentOrder,
   sourceTextForSpan,
-  statusClass,
-  statusMatches,
-  svgEl,
-  unique
+  statusClass
 } from "../utils.js";
 
 export function renderTimeline() {

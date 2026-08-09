@@ -15,14 +15,19 @@ import {
   buildDynamicSeedLexicon,
   applyOllamaPayload,
   buildCharacterStates,
-  buildRelations
+  buildRelations,
+  refreshNarrativeTime
 } from "../analyzer.js";
 import {
   renderAll,
   activateRoute,
   renderExport,
+  downloadExport,
   focusSelectionSegment,
-  isCheckRoute
+  isCheckRoute,
+  resetWhatIf,
+  handleWhatIfAction,
+  handleRubricInput
 } from "./views.js";
 import { addManualEvent, setAnnotationStatus, editEntity } from "./editing.js";
 import {
@@ -122,6 +127,12 @@ function bindEvents() {
     event.target.value = "";
   });
 
+  els.importWikiBtn.addEventListener("click", async () => {
+    const url = window.prompt("위키문헌 문서 URL을 입력하세요.", "https://ko.wikisource.org/wiki/감자");
+    if (!url) return;
+    await importFromWikisource(url);
+  });
+
   els.analyzeBtn.addEventListener("click", async () => {
     state.currentSegment = 1;
     await runAnalysis();
@@ -146,12 +157,12 @@ function bindEvents() {
     const raw = localStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return flashButton(els.loadSnapshotBtn, "없음");
     const snapshot = JSON.parse(raw);
-    els.sourceText.value = snapshot.sourceText || "";
-    state.uploadedDocument = snapshot.uploadedDocument || null;
+    els.sourceText.value = snapshot.sourceText;
+    state.uploadedDocument = snapshot.uploadedDocument;
     if (state.uploadedDocument) ensureCustomSampleOption(state.uploadedDocument.title);
-    state.currentSampleId = snapshot.currentSampleId || snapshot.analysis?.document?.sample_id || DEFAULT_SAMPLE_ID;
+    state.currentSampleId = snapshot.currentSampleId;
     els.sampleSelect.value = state.currentSampleId;
-    state.analysis = snapshot.analysis || null;
+    state.analysis = snapshot.analysis;
     state.currentSegment = 1;
     renderAll();
     flashButton(els.loadSnapshotBtn, "복원됨");
@@ -191,6 +202,7 @@ function bindEvents() {
     if (!state.analysis) return;
     state.analysis.states = buildCharacterStates(state.analysis);
     state.analysis.relations = buildRelations(state.analysis);
+    refreshNarrativeTime(state.analysis);
     renderAll();
   });
 
@@ -229,6 +241,8 @@ function bindEvents() {
       return;
     }
 
+    if (handleWhatIfAction(event.target)) return;
+
     const focusButton = event.target.closest("[data-focus-segment]");
     if (focusButton) {
       focusSegment(focusButton.dataset.focusSegment);
@@ -238,9 +252,15 @@ function bindEvents() {
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return;
+    if (handleRubricInput(target)) return;
     const { editKind, editId, editField } = target.dataset;
     if (!editKind || !editId || !editField) return;
     editEntity(editKind, editId, editField, target.value);
+  });
+
+  els.downloadExportBtn.addEventListener("click", () => {
+    downloadExport();
+    flashButton(els.downloadExportBtn, "저장됨");
   });
 
   els.copyExportBtn.addEventListener("click", async () => {
@@ -270,6 +290,7 @@ function resetWorkspaceState() {
   state.selected = null;
   state.currentSegment = 1;
   state.filters = { eventType: "all", status: "active", entity: "all" };
+  resetWhatIf();
 }
 
 async function loadSample(sampleId) {
@@ -291,25 +312,89 @@ async function loadSample(sampleId) {
 
 async function loadUploadedText(file) {
   if (!file) return;
-  const text = await file.text();
-  const title = titleFromFileName(file.name) || detectTitle(text);
+  const isEpub = /\.epub$/iu.test(file.name);
+  let loaded;
+  try {
+    loaded = isEpub ? await readEpubFile(file) : { text: await file.text() };
+  } catch (error) {
+    window.alert(`파일을 읽지 못했습니다: ${error.message}`);
+    return;
+  }
+
+  const title = loaded.title || titleFromFileName(file.name) || detectTitle(loaded.text);
   resetWorkspaceState();
   renderAll(); // blank the workspace immediately so the previous file's results never linger while the new analysis (e.g. Ollama seed) runs
   state.uploadedDocument = {
     id: CUSTOM_SAMPLE_ID,
     title,
-    author: "",
+    author: loaded.author || "",
     year: "",
     url: `upload:${file.name}`,
-    source_url: "",
-    rights: "user-provided"
+    source_url: loaded.source_url || "",
+    // EPUB이 스스로 밝힌 권리 표기는 그대로 옮긴다. 없으면 사용자 제공으로 남긴다.
+    rights: loaded.rights || "user-provided",
+    chapters: loaded.chapters || null,
+    // 챕터 offset은 이 원문에만 유효하다. 사용자가 편집하면 더 이상 쓸 수 없다.
+    chapterSourceText: loaded.chapters ? loaded.text : ""
   };
   ensureCustomSampleOption(title);
   state.currentSampleId = CUSTOM_SAMPLE_ID;
   els.sampleSelect.value = CUSTOM_SAMPLE_ID;
-  els.sourceText.value = text;
+  els.sourceText.value = loaded.text;
   state.currentSegment = 1;
   await runAnalysis();
+}
+
+/**
+ * EPUB은 실제 챕터 경계를 알려주므로 Scene을 근사하지 않아도 된다.
+ * 원문을 textarea에 넣어 편집·재분석 흐름은 TXT와 동일하게 유지한다.
+ */
+async function readEpubFile(file) {
+  const { epubToDocument, parseEpub } = await import("../core/epub.js");
+  const parsed = await parseEpub(await file.arrayBuffer());
+  const document = epubToDocument(parsed);
+  if (!document.text) throw new Error("본문을 찾지 못했습니다.");
+  return document;
+}
+
+/**
+ * 위키문헌에서 본문을 가져온다. 권리 표기는 서버가 `unverified`로 돌려주므로
+ * 사용자가 확인해야 한다는 사실을 화면에서 숨기지 않는다.
+ */
+async function importFromWikisource(url) {
+  els.importWikiBtn.classList.add("is-loading");
+  try {
+    const response = await fetch(`/api/import/wikisource?url=${encodeURIComponent(url)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.message || "가져오지 못했습니다.");
+      return;
+    }
+    resetWorkspaceState();
+    renderAll();
+    state.uploadedDocument = {
+      id: CUSTOM_SAMPLE_ID,
+      title: payload.title,
+      author: payload.author || "",
+      year: "",
+      url: payload.source_url,
+      source_url: payload.source_url,
+      rights: payload.rights,
+      chapters: null,
+      chapterSourceText: ""
+    };
+    ensureCustomSampleOption(payload.title);
+    state.currentSampleId = CUSTOM_SAMPLE_ID;
+    els.sampleSelect.value = CUSTOM_SAMPLE_ID;
+    els.sourceText.value = payload.text;
+    state.currentSegment = 1;
+    await runAnalysis();
+    window.alert(`'${payload.title}'을(를) 가져왔습니다.\n권리 표기는 '${payload.rights}'입니다 — 공개도메인 여부는 직접 확인하세요.`);
+  } catch (error) {
+    window.alert(`가져오기 실패: ${error.message}`);
+  } finally {
+    els.importWikiBtn.classList.remove("is-loading");
+  }
 }
 
 function ensureCustomSampleOption(title) {
@@ -334,7 +419,8 @@ async function runAnalysis(options = {}) {
     language: "ko",
     source: sample.url,
     sample,
-    text: els.sourceText.value
+    text: els.sourceText.value,
+    chapters: usableChapters()
   };
 
   if (options.forceDynamicSeed || els.analyzerMode.value === "ollama") {
@@ -349,6 +435,17 @@ async function runAnalysis(options = {}) {
   state.currentSegment = Math.min(state.currentSegment, state.analysis.segments.length || 1);
   focusFirstConnectedSegmentIfCurrentMapIsEmpty();
   renderAll();
+}
+
+/**
+ * EPUB 챕터 경계는 불러온 그 원문에만 유효하다. 사용자가 텍스트를 편집했다면
+ * offset이 밀리므로 챕터를 버리고 기존 균등 분할로 돌아간다 —
+ * 어긋난 경계로 Scene을 만드는 것보다 근사가 낫다.
+ */
+function usableChapters() {
+  const uploaded = state.uploadedDocument;
+  if (!uploaded?.chapters?.length) return null;
+  return els.sourceText.value === uploaded.chapterSourceText ? uploaded.chapters : null;
 }
 
 function focusFirstConnectedSegmentIfCurrentMapIsEmpty() {

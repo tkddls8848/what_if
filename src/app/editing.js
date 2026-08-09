@@ -1,5 +1,5 @@
 import { state, STATUS } from "./context.js";
-import { buildCharacterStates, buildRelations, relinkEventsWithSegmentMentions } from "../analyzer.js";
+import { buildCharacterStates, buildRelations, refreshNarrativeTime, relinkEventsWithSegmentMentions } from "../analyzer.js";
 import { renderAll } from "./views.js";
 import { getEntity, makeId, unique } from "./utils.js";
 
@@ -28,6 +28,7 @@ export function addManualEvent() {
   state.analysis.events = relinkEventsWithSegmentMentions(state.analysis.events, state.analysis);
   state.analysis.states = buildCharacterStates(state.analysis);
   state.analysis.relations = buildRelations(state.analysis);
+  refreshNarrativeTime(state.analysis);
   state.selected = { kind: "event", id: event.event_id };
   renderAll();
 }
@@ -43,6 +44,7 @@ export function setAnnotationStatus(kind, id, status) {
   }
   state.analysis.states = buildCharacterStates(state.analysis);
   state.analysis.relations = buildRelations(state.analysis);
+  refreshNarrativeTime(state.analysis);
   renderAll();
 }
 

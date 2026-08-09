@@ -48,6 +48,7 @@ export const els = {
   sourceText: $("#sourceText"),
   sampleSelect: $("#sampleSelect"),
   uploadTextBtn: $("#uploadTextBtn"),
+  importWikiBtn: $("#importWikiBtn"),
   textFileInput: $("#textFileInput"),
   analyzerMode: $("#analyzerMode"),
   ollamaModel: $("#ollamaModel"),
@@ -75,6 +76,8 @@ export const els = {
   reviewList: $("#reviewList"),
   rebuildBtn: $("#rebuildBtn"),
   addManualEventBtn: $("#addManualEventBtn"),
+  whatifPanel: $("#whatifPanel"),
   exportOutput: $("#exportOutput"),
-  copyExportBtn: $("#copyExportBtn")
+  copyExportBtn: $("#copyExportBtn"),
+  downloadExportBtn: $("#downloadExportBtn")
 };

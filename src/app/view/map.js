@@ -1,24 +1,20 @@
 import { state, els, STATUS } from "../context.js";
+import { statusButtons } from "../editing.js";
+import { renderAll } from "../views.js";
 import { selectMapEvents } from "./selectors.js";
 import {
-  csvCell,
   drawSvgText,
   escapeAttr,
   escapeHtml,
   eventTypeLabel,
   getEntity,
-  isCurrentSegmentId,
   isVisibleSegmentId,
-  kindLabel,
-  latestStateForCharacter,
-  matchesEntityFilter,
   nameOf,
-  segmentOrder,
+  renderEvidenceList,
+  renderMiniEvent,
   sourceTextForSpan,
   statusClass,
-  statusMatches,
-  svgEl,
-  unique
+  svgEl
 } from "../utils.js";
 
 export function renderGraph() {

@@ -11,8 +11,7 @@ const {
   splitLongText,
   verifyEvidence,
   EntityMerger,
-  runScenePipeline,
-  runSinglePipeline
+  runScenePipeline
 } = pipelinePkg;
 const { estimateTokens, fitsBudget, isAllowedRelation, PROMPT_VERSION } = promptsPkg;
 
@@ -219,7 +218,6 @@ test("runScenePipeline: 장면별 추출을 병합하고 진단을 남긴다", a
   assert.equal(result.payload.relationships[0].type, "family_of");
 
   // 진단
-  assert.equal(result.diagnostics.mode, "scene");
   assert.equal(result.diagnostics.prompt_version, PROMPT_VERSION);
   assert.ok(result.diagnostics.scenes_total >= 2);
   assert.equal(result.diagnostics.scenes_failed.length, 0);
@@ -299,21 +297,4 @@ test("runScenePipeline: PARSE_FAILED는 1회 재시도한다", async () => {
   assert.ok(result.payload);
   assert.ok(attempts >= 2);
   assert.equal(result.diagnostics.scenes_failed.length, 0);
-});
-
-// ── 단발 모드 (legacy) ───────────────────────────────────────────────────────
-
-test("runSinglePipeline: 절단 위험을 진단으로 보고한다", async () => {
-  const longText = "가".repeat(21000);
-  const client = scriptedClient(() => ({
-    ok: true,
-    data: { characters: [] },
-    prompt_eval_count: 8192,
-    eval_count: 10
-  }));
-  const result = await runSinglePipeline({ text: longText, model: "m4b", client, morphContext: { analyzer: "regex-fallback" } });
-  assert.ok(result.payload);
-  assert.equal(result.diagnostics.mode, "single");
-  assert.equal(result.diagnostics.truncation_risk, true);
-  assert.ok(result.diagnostics.estimated_prompt_tokens > 8192);
 });

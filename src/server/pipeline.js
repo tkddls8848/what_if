@@ -6,12 +6,48 @@
  * map: 장면별 (1) 인물·장소 → (2) 사건 프레임·상태 변화 소형 호출
  * reduce: 이름 정규화 병합 + evidence 원문 검증 + 합의 confidence 조정 + 관계 pass
  *
- * 출력 payload는 기존 단발 프롬프트와 같은 형태이므로 브라우저의
- * buildDynamicSeedLexicon / applyOllamaPayload를 그대로 통과한다.
+ * 출력 payload는 브라우저의 buildDynamicSeedLexicon / applyOllamaPayload가
+ * 소비하는 단일 계약이다.
  */
 
-const { normalizeText, regexCandidateNames } = require("./morph");
 const prompts = require("./prompts");
+
+const CHARACTER_CANDIDATE_RE = /(?<![가-힣])((?:[가-힣]{1,6}(?:님|씨|서방|부인|선생|사장|감독|의사|경찰))|아내|남편|어머니|아버지|할머니|할아버지|주인|손님|영감|색시|신부|신랑|아이|소년|소녀|여인|여편네|사내|노인|청년|아가씨|아주머니|아저씨)(?:은|는|이|가|을|를|에게|와|과|도|의|께서|에게서|한테|한테서)(?![가-힣])/gu;
+const LOCATION_CANDIDATE_RE = /(?<![가-힣])([가-힣A-Za-z0-9]{0,12}(?:정거장|백화점|공동묘지|빈민굴|옥상|시장|골목|마당|학교|병원|도시|마을|바다|부엌|창고|가게|주막|다방|호텔|여관|묘지|거리|방|집|길|문|역|강|산|숲|밭|궁|성))(?:에서부터|으로부터|에서는|에서도|까지|부터|에서|으로|에는|에도|에|로|을|를|은|는|이|가|와|과|의|도)?(?![가-힣])/gu;
+
+function normalizeText(text) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[ \u00a0]+/g, " ")
+    .trim();
+}
+
+function regexCandidateNames(text) {
+  const normalized = normalizeText(text);
+  const characters = countRegexCandidates(normalized, CHARACTER_CANDIDATE_RE).map((item) => item.base);
+  const locations = countRegexCandidates(normalized, LOCATION_CANDIDATE_RE, isLocationName).map((item) => item.base);
+  return { characters: new Set(characters), locations: new Set(locations) };
+}
+
+function countRegexCandidates(text, regex, predicate = () => true) {
+  const counts = new Map();
+  for (const match of text.matchAll(regex)) {
+    const surface = String(match[0] || "").trim();
+    const base = String(match[1] || surface).trim();
+    if (base.length < 2 || !predicate(base)) continue;
+    const item = counts.get(base) || { base, count: 0 };
+    item.count += 1;
+    counts.set(base, item);
+  }
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+}
+
+function isLocationName(name) {
+  if (/^(?:불길|시집|계집|고집|편집|모집|수집|징역|기억|능력|세력|매력|가능성|특성|여성|남성|방송|서방)$/u.test(name)) return false;
+  if (/[어아]가게$/u.test(name)) return false;
+  return !/(?:님|씨|서방|부인|아내|남편|선생|사장|감독|의사|경찰|주인|손님|영감|색시|신부|신랑)$/u.test(name);
+}
 
 // 4B급 모델이 한 번에 여러 사건을 과도하게 압축하지 않도록 분석 단위를 작게
 // 유지한다. 브라우저 analyzer의 MAX_SEGMENT_CHARS와 같은 값이어야
@@ -194,10 +230,6 @@ class EntityMerger {
     entry.scenes.add(sceneIndex);
   }
 
-  has(name) {
-    return this.byKey.has(normalizeNameKey(name));
-  }
-
   /** 2개 장면 이상 등장 또는 규칙 채널 합의 시 confidence를 올린다. */
   finalize(agreementNames) {
     return Array.from(this.byKey.values()).map((entry) => {
@@ -251,7 +283,6 @@ async function runScenePipeline({
   const mentalWords = new Map();
   const physicalWords = new Map();
   const diagnostics = {
-    mode: "scene",
     prompt_version: prompts.PROMPT_VERSION,
     model,
     num_ctx: numCtx,
@@ -466,31 +497,10 @@ async function runScenePipeline({
     physical_states: toStateSeed(physicalWords),
     event_frames: eventFrames,
     relationships,
-    state_changes: stateChanges,
-    events: []
+    state_changes: stateChanges
   };
 
   return { payload, diagnostics };
-}
-
-/** 기존 단발 호출 (mode=single 비교용). */
-async function runSinglePipeline({ text, model, client, morphContext, numCtx = prompts.NUM_CTX } = {}) {
-  const prompt = prompts.singleShotPrompt(text, morphContext);
-  const estimated = prompts.estimateTokens(prompt);
-  const result = await callWithParseRetry(client, { model, prompt, format: "json", numCtx });
-  const diagnostics = {
-    mode: "single",
-    prompt_version: prompts.PROMPT_VERSION,
-    model,
-    num_ctx: numCtx,
-    estimated_prompt_tokens: estimated,
-    truncation_risk: estimated > numCtx,
-    prompt_eval_total: result.prompt_eval_count || 0,
-    eval_total: result.eval_count || 0,
-    calls: 1
-  };
-  if (!result.ok) return { error: result, diagnostics };
-  return { payload: result.data, diagnostics };
 }
 
 module.exports = {
@@ -501,6 +511,5 @@ module.exports = {
   normalizeNameKey,
   verifyEvidence,
   EntityMerger,
-  runScenePipeline,
-  runSinglePipeline
+  runScenePipeline
 };

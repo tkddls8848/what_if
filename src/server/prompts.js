@@ -249,98 +249,6 @@ function relationsPrompt({ cast, locations, eventFrames }) {
 ${allowed}`;
 }
 
-/** 기존 단발 프롬프트 (mode=single 비교용 — server.js에서 이동, 내용 동일). */
-function singleShotPrompt(text, morphContext) {
-  const clipped = text.slice(0, 22000);
-  const contextJson = JSON.stringify(morphContext, null, 2).slice(0, 12000);
-  return `너는 로컬에서 실행되는 한국어 소설 지식그래프 추출기다. 외부 API나 외부 지식은 절대 사용하지 말고, 아래 원문과 전처리 컨텍스트만 근거로 JSON만 반환하라.
-
-목표:
-1. 작품 안에서 확인되는 인물, 장소, 사건 분류, 감정/신체 상태 seed를 추출한다.
-2. 사건을 바로 관계 triple로 만들지 말고 먼저 5W1H 사건 프레임으로 펼친다.
-3. 그 사건 프레임과 기존 노드 후보를 기준으로 노드 간 관계를 추출한다.
-4. 사건으로 인한 인물 상태 변화를 별도로 추출한다.
-
-중요 규칙:
-- 원문 근거가 없는 항목은 만들지 않는다.
-- evidence는 원문에서 그대로 찾을 수 있는 짧은 구절이어야 한다.
-- 암시된 관계는 버리지 말고 confidence를 "inferred" 또는 "weak"으로 낮춰 표시한다.
-- characters, locations, event_frames의 이름을 relationships와 state_changes에서 재사용한다.
-- 관계는 아래 허용 스키마 안에서만 만든다.
-- JSON 이외의 설명 문장을 출력하지 않는다.
-
-허용 관계 스키마:
-- character -> character: knows, family_of, ally_of, enemy_of, protects, threatens, depends_on, suspects, loves, hides_from, changes_attitude_to, speaks_to
-- character -> event: participates_in, caused, witnessed, affected_by, investigated, escaped_from
-- event -> event: caused_by, leads_to, happens_before, happens_after, reveals, contradicts
-- character -> location: appears_in, located_at, came_from, went_to, trapped_at, owns
-- event -> location: takes_place_at
-
-반환 형식:
-{
-  "characters": [
-    {"name": "", "aliases": [], "role": "", "description": "", "evidence": "", "confidence": 0.7}
-  ],
-  "locations": [
-    {"name": "", "aliases": [], "type": "inferred", "description": "", "evidence": "", "confidence": 0.7}
-  ],
-  "event_types": [
-    {"type": "movement", "label": "이동", "words": [], "description": ""}
-  ],
-  "mental_states": [
-    {"state": "", "words": [], "description": ""}
-  ],
-  "physical_states": [
-    {"state": "", "words": [], "description": ""}
-  ],
-  "event_frames": [
-    {
-      "id": "frame_001",
-      "type": "background",
-      "label": "배경",
-      "summary": "",
-      "who": [],
-      "where": [],
-      "when": "",
-      "what_happened": "",
-      "why_relevant": "",
-      "result": "",
-      "evidence": "",
-      "confidence": 0.7
-    }
-  ],
-  "relationships": [
-    {
-      "source": "",
-      "source_type": "character",
-      "target": "",
-      "target_type": "event",
-      "type": "participates_in",
-      "label": "",
-      "evidence": "",
-      "confidence": "explicit"
-    }
-  ],
-  "state_changes": [
-    {
-      "character": "",
-      "trigger_event": "",
-      "before": {"location": "", "mental_state": "", "physical_state": "", "knowledge": []},
-      "after": {"location": "", "mental_state": "", "physical_state": "", "knowledge": []},
-      "evidence": "",
-      "confidence": "explicit"
-    }
-  ],
-  "events": []
-}
-
-전처리 컨텍스트:
-${contextJson}
-
-원문:
-${clipped}`;
-}
-
 function isAllowedRelation(sourceType, targetType, type) {
   const key = `${sourceType}->${targetType}`;
   return Boolean(RELATION_WHITELIST[key]?.includes(type));
@@ -361,6 +269,5 @@ module.exports = {
   sceneEntitiesPrompt,
   sceneEventsPrompt,
   relationsPrompt,
-  singleShotPrompt,
   isAllowedRelation
 };

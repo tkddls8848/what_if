@@ -1,524 +1,291 @@
-# Novel IF Reader 기술 설계 문서
+# 기술 설계
 
-Updated: 2026-07-04
+Updated: 2026-08-09
 
-이 문서는 현재 저장소에 구현된 구조와 동작을 설명한다. 설치와 실행 방법은 루트의 [`README.md`](../README.md)를 기준으로 하며, 이 문서는 분석 파이프라인·데이터 계약·화면 상태·제약 사항을 다룬다.
+설치·실행·API 요약은 [루트 README](../README.md)에 있다. 이 문서는 **왜 그렇게
+만들었는지**와 데이터 계약을 다룬다.
 
-## 1. 제품 범위
+## 1. 원칙
 
-Novel IF Reader는 한국어 소설 원문을 문단 단위로 분석해 다음 정보를 제공하는 로컬 웹 애플리케이션이다.
+1. 자동 추출은 사실이 아니라 후보다. 모든 항목은 `suggested`로 들어오고 검수를 거친다.
+2. 모든 주장은 원문 문자 offset으로 되짚을 수 있어야 한다. 근거를 만들 수 없는 항목은
+   응답과 병합에서 제외한다.
+3. 스포일러 판정은 뷰 필터가 아니라 질의 원시연산이다. 판정 코드는 저장소에 한 벌만 둔다.
+4. 오탐보다 누락을 택한다. 근거가 약한 후보를 만들어 놓고 검수로 지우게 하지 않는다.
+5. LLM은 선택 채널이다. Ollama가 없어도 앱은 규칙 분석으로 완전히 동작한다.
 
-- 인물, 장소, 사건과 원문 근거
-- 인물별 심리·신체 상태와 알려진 사실
-- 인물-사건-장소 관계 그래프
-- 독서 진행 위치까지의 사건 타임라인
-- 자동 추출 결과의 검수·수정·제외
-- 분석 결과의 구조화 출력
-
-핵심 원칙은 다음과 같다.
-
-1. 자동 추출 결과는 확정 사실이 아니라 `suggested` 상태의 후보로 취급한다.
-2. 객체와 사건은 원문 segment 및 문자 offset으로 근거를 추적한다.
-3. 스포일러 차단 상태에서는 현재 독서 위치 이후의 객체와 사건을 렌더링·출력하지 않는다.
-4. 외부 문서는 오탐을 줄이기 위해 보수적으로 분석하고, 누락은 검수 화면에서 보완한다.
-
-## 2. 현재 구현 상태
-
-### 구현됨
-
-- 이상 「날개」, 김동인 「감자」 내장 샘플
-- TXT 업로드와 원문 직접 편집
-- 빠른 분석(브라우저 규칙 기반)
-- Ollama 4B~7B 모델을 이용한 **분석 청크 단위 map-reduce 추출 파이프라인**
-  (길이 제한 없음, structured outputs, 롤링 cast, evidence 검증, 관계 pass)
-- SSE 진행 스트림과 장면 진행률 표시
-- 분석 결과 디스크 캐시(`cache/`)와 `force` 재생성
-- `GET /api/ollama/health` 진단과 구조화 오류 계약
-- Python/`kiwipiepy` 형태소 전처리와 정규식 fallback
-- Reader, 관계 지도, 사건 타임라인, 인물 상태 화면
-- `/check` 검수 화면
-- 브라우저 `localStorage` 스냅샷
-- JSON, CSV, Markdown, TimelineJS, Graph JSON 출력
-- Node 내장 테스트 러너 기반 회귀 테스트 (분석기·클라이언트·파이프라인·서버 API)
-- 골든셋 precision/recall 평가 스크립트 (`scripts/eval_extraction.mjs`)
-
-### 구현되지 않음
-
-- 데이터베이스와 서버 영속 저장
-- 사용자 계정, 권한, 협업 검수
-- 의미 기반 장면 경계 모델
-- 완전한 한국어 공지시·대명사 해소
-- 인물·장소 병합/분리 전용 UI
-- 실제 지도 좌표 자동 연결
-- 내보내기 파일 다운로드
-
-## 3. 런타임 구조
+## 2. 모듈 경계
 
 ```text
-Browser
-  index.html
-      │
-      ▼
-  src/app/controller.js ───────────────┐
-      │                                │ optional
-      ├─ src/analyzer.js               ▼
-      ├─ src/app/editing.js       Express server.js
-      └─ src/app/view/*                 │
-                                       ├─ scripts/korean_morph.py
-                                       └─ Ollama HTTP API
+src/core/     ← 런타임 공용. DOM·네트워크·전역 상태 없음 (ESM)
+   ↑
+src/analyzer.js   규칙 분석과 LLM 결과 병합 (ESM)
+   ↑                    ↑
+src/app/  브라우저      mcp/  읽기 전용 어댑터 (ESM)
+                        ↑
+src/server/  Ollama 파이프라인·외부 가져오기 (CommonJS)
 ```
 
-- 프론트엔드는 빌드 단계가 없는 Vanilla JavaScript ES modules 구조다.
-- `server.js`는 CommonJS 기반 Express 프로세스로 정적 파일과 Ollama 중계 API를 제공한다.
-- 빠른 분석은 브라우저에서 완료되며 서버나 Ollama가 없어도 동작한다.
-- 상세 분석에서만 원문이 로컬 Express API를 거쳐 Python 전처리와 Ollama로 전달된다.
-- 데이터베이스는 없으며 서버는 분석 결과를 보관하지 않는다.
+모듈 종류는 디렉터리별 `package.json`이 명시한다 — `src/`와 `mcp/`는 `"type": "module"`,
+`src/server/`는 `"type": "commonjs"`다. 루트 `server.js`도 CommonJS다. Node의 구문
+자동 감지에 기대지 않는다.
 
-## 4. 디렉터리와 책임
+의존 방향은 한쪽이다. `src/core/`는 자기들끼리와 `src/config.js`(상태값 상수)만
+import하고 위쪽을 참조하지 않는다. `src/app/`과 `mcp/`는 `src/core/`와 `analyzer.js`를
+쓴다. **`mcp/`에는 한국어 사전·정규식·엔티티 판정을 두지 않는다** — 규칙이 두 벌이 되면
+화면과 에이전트의 답이 갈라진다. `tests/mcp_tools.test.mjs`가 이 규칙을 검사한다.
 
-```text
-novel_if/
-├─ index.html
-├─ styles.css
-├─ server.js
-├─ src/
-│  ├─ config.js
-│  ├─ analyzer.js
-│  └─ app/
-│     ├─ controller.js
-│     ├─ context.js
-│     ├─ editing.js
-│     ├─ utils.js
-│     ├─ views.js
-│     └─ view/
-│        ├─ router.js
-│        ├─ selectors.js
-│        ├─ reader.js
-│        ├─ map.js
-│        ├─ timeline.js
-│        ├─ characters.js
-│        ├─ review.js
-│        └─ export.js
-├─ scripts/
-│  └─ korean_morph.py
-├─ texts/
-│  ├─ wings.txt
-│  └─ gamja.txt
-└─ tests/
-   ├─ analyzer.test.mjs
-   └─ fixtures/
-```
+`app/` 안에는 순환 import가 있다(`views.js` ↔ 뷰 모듈, `utils.js` → `views.js`).
+`renderAll`이 함수 선언이라 호이스팅되고 로드 시점에 호출하지 않으므로 안전하다.
+빌드 단계도 린터도 없으므로 `tests/module_wiring.test.mjs`가 import 누락을 잡는다.
 
-| 파일 | 책임 |
-|---|---|
-| `src/config.js` | 샘플 메타데이터, 상태값, 사건·상태 사전, 내장 작품 seed |
-| `src/analyzer.js` | segment·scene 생성, 엔티티·사건 추출, Ollama 병합, 상태·관계 계산 |
-| `src/app/controller.js` | 초기화, 입력 이벤트, 분석 모드 선택, 스냅샷, 라우팅 연결 |
-| `src/app/context.js` | 단일 UI 상태와 DOM 참조 |
-| `src/app/editing.js` | 검수 상태 변경, 필드 편집, 수동 사건 추가 |
-| `src/app/view/selectors.js` | 독서 범위·필터·상태에 따른 표시 데이터 계산 |
-| `server.js` | 정적 서버, Ollama 모델 조회와 분석 요청 |
-| `scripts/korean_morph.py` | Kiwi 또는 정규식을 이용한 한국어 후보 전처리 |
+## 3. 분석 파이프라인
 
-## 5. 실행 설정
+### 규칙 분석 (기본, 브라우저)
 
-### 필수
+1. 공백·줄바꿈 정규화 (`src/core/text.js`, 멱등)
+2. 빈 줄 기준 `Segment` 생성. 긴 문단은 문장 경계를 우선해 1,000자 이하로 분할
+3. `Scene` 구성 — 챕터를 알면(EPUB) 실제 경계, 모르면 최대 12개 균등 분할
+4. seed 사전으로 인물·장소 추출 → `Mention` 앵커링
+5. 문장별 사건 유형과 참여 인물·장소 판정
+6. 인물 상태와 관계 계산, 시간 구간 부여, 제약 감사
 
-- Node.js 18 이상
-- npm
+### 상세 분석 (선택, Ollama 4B~7B)
 
-### 선택
+장면 단위 map-reduce다. 원문 길이 제한이 없고 컨텍스트 절단이 일어나지 않는다.
 
-- Ollama: 상세 분석 사용 시 필요
-- Python 3: 상세 분석용 한국어 전처리 시 사용
-- `kiwipiepy`: Python 형태소 분석 품질 향상
+| 단계 | 내용 |
+| --- | --- |
+| 분할 | 문장 경계 우선, 목표 1,000자(`DEFAULT_TARGET_CHARS`). 청크가 60개를 넘으면 목표를 키워 호출 수를 제한한다 |
+| map | 청크마다 2회 호출 — (a) 인물·장소, (b) 사건 프레임·상태 변화 |
+| 롤링 cast | 앞 청크까지 확인된 인물을 다음 프롬프트에 전달. 2개 청크 이상 등장했거나 규칙 채널과 합의한 인물만 편입한다 |
+| reduce | 이름 정규화 dedupe, 별칭 누적, evidence가 그 청크 원문에 실제 있는지 검증(불일치 시 confidence 강등) |
+| 관계 pass | 원문 대신 병합된 cast·사건 요약으로 1회 호출. 화이트리스트 밖 관계는 버린다 |
+| 병합 | 브라우저가 동적 seed를 만들어 규칙 분석을 다시 돌리고, **원문 mention과 연결되는 객체만** 병합한다 |
 
-### 환경 변수
+`temperature: 0.1`, `num_ctx: 8192`, 프롬프트는 `num_ctx`의 60% 이하로 예산을 검사한다.
+구조화 출력(JSON Schema)으로 디코딩을 강제하고 파싱 실패는 1회 재시도한다. 청크 일부가
+실패해도 전체가 실패하지 않고 `scenes_failed`에 기록된다. 진행 상황은 SSE `progress`로
+보낸다. 결과는 `hash(text + model + prompt_version)`로 디스크 캐시된다.
 
-| 변수 | 기본값 | 설명 |
-|---|---|---|
-| `PORT` | `3000` | Express 서버 포트 |
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API 기준 주소 |
-| `PYTHON` | `python` | 형태소 worker 실행 파일 |
+프롬프트 버전은 `scene-v2`이며 캐시 키에 포함된다.
 
-Python 실행 또는 `kiwipiepy` import가 실패하면 Node/Python 정규식 fallback으로 전환된다. 이 실패는 빠른 분석을 중단하지 않는다.
+## 4. 별칭 매칭 — 단일 규칙
 
-## 6. 입력 유형과 분석 모드
+`analyzer.js`의 `aliasPattern()` 한 곳만 별칭을 원문에서 찾는다. mention 채널,
+사건 채널, LLM 병합 채널이 모두 이 함수를 쓴다.
 
-### 입력 유형
+- 앞: 한글로 시작하는 별칭은 한글 뒤에 붙어 있으면 안 된다(단어 내부 매칭 금지).
+- 뒤: 한글로 끝나는 별칭은 **조사 하나까지만** 허용하고 그 뒤는 한글이 아니어야 한다.
+  `복녀도`는 인정하고 `복녀들`은 거부한다. `나가서`의 `나`+`가`도 뒤에 `서`가 있어 거부된다.
 
-| 유형 | `sample_id` | seed |
-|---|---|---|
-| 「날개」 | `wings` | 작품별 정적 인물·장소 seed |
-| 「감자」 | `gamja` | 작품별 정적 인물·장소 seed |
-| 업로드 TXT | `custom` | 원문에서 생성한 동적 seed |
+조사 허용과 뒤 경계 확인은 둘 다 필요하다. 경계만 보면 조사 결합형을 통째로 놓치고,
+조사만 허용하면 활용형을 잡는다. 예전에는 세 채널이 서로 다른 규칙을 써서 같은 문장에
+다른 답을 냈고, 그 불일치가 그대로 `actor` 제약 위반으로 쌓였다.
 
-업로드 파일명에서 문서 제목을 만들며, 업로드 원문은 서버에 저장하지 않는다.
+엔티티 경계 판정 기준(외부 문서용):
 
-### 빠른 분석 (기본)
+- 인물: `아내`, `남편`, `마나님`, `선생` 같은 명시적 사람 지칭어를 우선한다. 일반 이름
+  후보는 반복 출현 + 주격·화제 조사 + 사람 행위 문맥이 함께 있어야 한다.
+- 장소: 공백 없는 핵심 명사만. 처소 조사·이동 동사 문맥을 근거로 쓴다.
+  `불길`, `시집`, `징역`처럼 장소 접미사와 철자가 겹치는 일반어는 제외한다.
+- 오탐 금지 목록: `모양`, `조밥`, `마음`, `얼굴`, `머리`, `소리`, `활극`, `바구니`,
+  `불길`, `징역`, `들어가게`. `tests/analyzer.test.mjs`가 지킨다.
 
-기본 모드다. `analyzeNovel()`이 브라우저에서 동기적으로 실행된다.
-
-1. 줄바꿈과 공백을 정규화한다.
-2. 빈 줄을 기본 경계로 `Segment`를 만들되, 긴 문단은 문장 경계를 우선해 약 1,000자 단위로 나눈다.
-3. segment를 최대 12개 그룹으로 균등 분할해 화면 탐색용 임시 `Scene`을 만든다.
-4. 내장 seed 또는 외부 문서용 동적 seed로 인물·장소를 추출한다.
-5. 원문 문자 범위와 연결된 `Mention`을 생성한다.
-6. 문장별 사건 유형과 참여 인물·장소를 계산한다.
-7. mention을 이용해 사건 연결을 보정한다.
-8. 인물 상태와 관계를 다시 계산한다.
-
-### 상세 분석 (로컬 AI)
-
-`상세 분석 (로컬 AI)` 또는 `상세 분석 새로 실행`을 선택하면 다음 순서로 실행된다.
-
-1. 브라우저가 `POST /api/analyze/ollama`(SSE)로 원문과 모델명을 보낸다.
-2. 서버가 캐시(`sha256(text+model+mode+prompt_version)`)를 조회한다.
-   `상세 분석 새로 실행`은 `force`로 캐시를 우회한다.
-3. 서버가 원문을 문장 경계를 우선한 분석 청크(기본 약 1,000자)로 나눈다. 원문 길이
-   제한이 없으며, 각 호출의 프롬프트는 `num_ctx`의 60% 이하로 예산을 검사한다.
-4. 분석 청크마다 두 번의 소형 호출을 한다 — (a) 인물·장소 추출, (b) 사건 프레임과
-   상태 변화 추출. Ollama structured outputs(JSON Schema `format`)로 응답
-   구조를 디코딩 수준에서 강제하고, 파싱 실패는 1회 재시도한다.
-5. 앞 청크까지 확인된 인물 목록(롤링 cast)을 다음 청크 프롬프트에 전달해
-   재등장 인물의 이름 연속성을 유지한다. cast에는 2개 청크 이상 등장했거나
-   규칙 채널(정규식 후보)과 합의된 인물만 편입한다.
-6. 서버가 청크 결과를 병합한다 — 이름 정규화 dedupe, 별칭 누적, evidence가
-   해당 청크 원문에 실제 존재하는지 검증(불일치 시 confidence 강등),
-   2개 청크 이상 등장·규칙 합의 인물은 confidence 상향.
-7. 관계 pass: 원문 대신 병합된 cast·사건 프레임 요약을 입력으로 1회 호출하고,
-   허용 관계 화이트리스트 밖의 관계를 버린다.
-8. 청크별 진행(`progress`)이 SSE로 브라우저에 전달되어 버튼에 표시된다.
-   일부 청크 실패는 진단(`scenes_failed`)에 기록될 뿐 전체 실패로 번지지 않는다.
-9. 브라우저는 최종 payload로 동적 seed를 만들고 규칙 분석을 실행한 뒤,
-   Ollama 객체가 실제 원문 mention과 연결될 때만 병합한다 (기존과 동일).
-10. 동적 seed에서 인물 mention을 하나도 찾지 못하면 규칙 분석으로 재실행한다.
-
-상태 변화(`state_changes`)는 추출된 분석 청크의 segment 번호(`segment_indexes`)와
-함께 반환되어 시점별 인물 상태 표시의 근거가 된다.
-
-`scene-v2`부터 분석 청크 목표 크기는 1,000자다. 이전 `scene-v1` 캐시는
-프롬프트 버전이 캐시 키에 포함되므로 자동으로 재사용되지 않는다. 응답 진단의
-`target_chars`는 요청한 청크 목표 크기, `scenes_total`은 실제 분석 청크 수다.
-분석 청크가 60개를 넘는 장문은 목표 크기를 단계적으로 늘려 호출 수를 제한한다.
-정상 실행의 모델 호출 수는 기본적으로 `청크 수 × 2 + 관계 pass 1회`이므로,
-기존 2,000자 분할보다 처리 시간은 늘지만 청크 내부 사건 압축과 누락 가능성은 줄어든다.
-
-허용 모델은 태그 또는 모델 정보에서 4B~7B로 판별되는 completion 모델이다.
-요청 옵션은 `temperature: 0.1`, `num_ctx: 8192`이다. `mode: "single"`로 기존
-단발 프롬프트(원문 22,000자 클립 + 형태소 전처리 컨텍스트)를 비교용으로 호출할
-수 있으며, 이 모드는 긴 원문에서 절단 위험이 있어 진단(`truncation_risk`)으로
-보고된다.
-
-서버 구현: `src/server/ollama_client.js`(HTTP·오류 계약), `src/server/prompts.js`
-(프롬프트·JSON Schema·토큰 예산), `src/server/pipeline.js`(장면 분할·병합),
-`src/server/cache.js`(디스크 캐시), `src/server/morph.js`(전처리).
-
-## 7. 외부 문서 엔티티 경계 규칙
-
-외부 문서는 정적 작품 사전이 없으므로 일반 명사·수식어·조사를 객체로 오인하기 쉽다. 현재 분석기는 정확도를 우선해 다음 규칙을 적용한다.
-
-### 인물
-
-- 공백 없는 한국어 어절에서 조사를 분리한다.
-- `아내`, `남편`, `마나님`, `선생`, `감독`, `서방` 같은 명시적 사람 지칭어를 우선한다.
-- 일반 이름 후보는 반복 출현, 주격·화제 조사, 사람 행위 문맥이 함께 있어야 한다.
-- 장소 접미사나 일반 추상 명사로 판단되는 이름은 제외한다.
-- `모양`, `조밥`, `마음`, `얼굴`, `머리`, `소리` 등의 오탐 후보를 차단한다.
-
-### 장소
-
-- 장소명 후보에는 공백을 허용하지 않아 앞 문장의 수식어가 포함되지 않게 한다.
-- `집`, `길`, `문`, `역`, `시장`, `학교`, `빈민굴`, `묘지` 등의 핵심 명사를 찾는다.
-- 처소 조사, 이동 동사 문맥 또는 장소성이 강한 합성어를 근거로 사용한다.
-- `불길`, `시집`, `징역`, `가능성`, `들어가게`처럼 장소 접미사와 철자가 겹치는 일반어·활용형을 제외한다.
-- 예를 들어 `마나님은 전찻길을 건너갔다`는 인물 `마나님`과 장소 `전찻길`로 분리한다.
-
-### Mention 경계
-
-- 별칭은 긴 표현부터 검사한다.
-- 한글 단어 내부의 부분 문자열은 mention으로 인정하지 않는다.
-- 동일 구간에서 겹치는 별칭은 가장 긴 mention 하나만 남긴다.
-- seed 생성 후 별도의 광역 정규식 후보 패스를 실행하지 않는다.
-
-이 규칙은 [`doc/tast.md`](tast.md)의 문제 사례와 `tests/analyzer.test.mjs`의 회귀 테스트로 관리한다.
-
-## 8. 분석 데이터 계약
-
-`analysis` 최상위 객체는 다음 컬렉션을 가진다.
+## 5. 데이터 계약
 
 ```text
 analysis
-├─ document
-├─ segments[]
-├─ scenes[]
-├─ mentions[]
-├─ characters[]
-├─ locations[]
-├─ events[]
-├─ states[]
-├─ relations[]
+├─ document, segments[], scenes[], mentions[]
+├─ characters[], locations[], events[], states[], relations[]
+├─ branches[]        # what-if 생성물. 없을 수 있다
 ├─ dynamic_lexicon
-└─ diagnostics
+└─ diagnostics       # engine, seed_lexicon, warnings, counts, audit
 ```
 
-### 주요 객체
-
-| 객체 | 주요 필드 |
-|---|---|
+| 객체 | 필드 |
+| --- | --- |
 | `Document` | `document_id`, `sample_id`, `title`, `author`, `publication_year`, `language`, `source`, `source_url`, `rights`, `created_at` |
 | `Segment` | `segment_id`, `document_id`, `index`, `scene_id`, `text`, `char_start`, `char_end` |
-| `Scene` | `scene_id`, `index`, `start_segment_id`, `end_segment_id`, `summary` |
+| `Scene` | `scene_id`, `document_id`, `index`, `title`, `start_segment_id`, `end_segment_id`, `summary`, (EPUB) `source_ref` |
 | `Mention` | `mention_id`, `entity_type`, `entity_id`, `text`, `segment_id`, `char_start`, `char_end`, `status`, `confidence`, `method` |
-| `Character` | `character_id`, `canonical_name`, `aliases`, `mentions`, `first_segment_id`, `description`, `role`, `status`, `confidence`, `method` |
-| `Location` | `location_id`, `name`, `aliases`, `mentions`, `first_segment_id`, `type`, `parent_location_id`, `narrative_coords`, `status`, `confidence`, `method` |
-| `Event` | `event_id`, `type`, `summary`, `segment_id`, `scene_id`, `sentence_index`, `characters`, `locations`, `source_span`, `status`, `confidence`, `method` |
-| `CharacterState` | `state_id`, `character_id`, `segment_id`, `location_id`, `mental_state`, `physical_state`, `known_facts`, `source_event_ids`, `status` |
-| `Relation` | `relation_id`, `source_type`, `source_id`, `target_type`, `target_id`, `relation_type`, `event_ids`, `segment_ids`, `weight`, `status` |
-
-### 상태값
-
-| 상태 | 의미 |
-|---|---|
-| `suggested` | 자동 분석이 제안한 초기 상태 |
-| `confirmed` | 사용자가 확정 |
-| `edited` | 사용자가 수정 |
-| `rejected` | 분석과 표시에서 제외 |
-| `manual` | 사용자가 직접 생성 |
-
-`active` 필터는 저장된 상태가 아니라 `rejected`가 아닌 항목을 뜻한다.
-
-### 사건 유형
-
-- `appearance`
-- `movement`
-- `conversation`
-- `perception`
-- `conflict`
-- `realization`
-- `stasis`
-- `symbolic`
-- `background`
-
-### 자동 관계 유형
-
-| source | relation | target |
-|---|---|---|
-| character | `participates_in` | event |
-| character | `appears_in` | location |
-| event | `takes_place_at` | location |
-
-동일 관계가 여러 사건에서 반복되면 `weight`, `event_ids`, `segment_ids`를 누적한다.
-
-## 9. 상태 계산
-
-인물 상태는 segment 순서로 누적 계산된다.
-
-- 인물 mention 또는 참여 사건이 있는 segment에서 상태 레코드를 만든다.
-- 사건의 장소가 있으면 현재 장소를 갱신한다.
-- Ollama `state_hints`가 있으면 해당 값을 우선한다.
-- 그렇지 않으면 동적/정적 상태 사전과 사건 유형으로 심리·신체 상태를 추론한다.
-- 최근 사건 요약 최대 5개를 `known_facts`로 유지한다.
-- 확정적인 단서가 없으면 `상태 단서 부족`, `신체 단서 부족`으로 표시한다.
-
-인물·장소·사건의 상태 변경이나 수동 사건 추가 후에는 states와 relations를 다시 계산한다.
-
-## 10. 화면과 라우팅
-
-### `/`
-
-| 영역 | 동작 |
-|---|---|
-| Reader | 원문 입력, segment 목록, 독서 위치 변경 |
-| 관계 지도 | 현재 segment의 인물·장소·사건 연결 표시 |
-| Inspector | 선택 객체의 상태, 근거, 검수 버튼 표시 |
-| 사건 흐름 | 현재 독서 범위까지 사건을 segment 순으로 표시 |
-| 인물 상태 | 상태 이력, 관계, 공간 궤적, 등장 밀도 표시 |
-| 내보내기 | 현재 scope의 분석 데이터를 형식별 텍스트로 생성 |
-
-### `/check`
-
-- 현재 segment 원문에서 mention과 사건 근거를 강조한다.
-- 인물, 장소, 사건을 신뢰도 오름차순으로 표시한다.
-- 인물명, 장소명, 사건 요약을 직접 편집한다.
-- 항목을 `confirmed`, `edited`, `rejected`로 변경한다.
-- 현재 segment에 `manual` 사건을 추가한다.
-- 재계산 버튼은 현재 편집 결과로 states와 relations를 다시 만든다.
-
-라우팅은 History API를 사용하며 두 경로 모두 같은 `index.html`을 렌더링한다.
-
-## 11. 스포일러 범위와 필터
-
-전역 UI 상태는 `src/app/context.js`의 `state` 객체가 보유한다.
-
-```js
-{
-  currentSegment: 1,
-  spoilerSafe: true,
-  selected: null,
-  exportFormat: "json",
-  filters: {
-    eventType: "all",
-    status: "active",
-    entity: "all"
-  }
-}
-```
-
-스포일러 차단이 켜져 있으면 다음 조건을 적용한다.
-
-- visible segment: `segment.index <= currentSegment`
-- map: 현재 segment의 사건만 사용
-- timeline/review/export: visible segment까지만 사용
-- character/location: 첫 등장 segment가 visible 범위에 있어야 함
-- relation: visible segment를 하나 이상 근거로 가져야 함
-
-스포일러 차단을 끄면 전체 문서를 scope로 사용한다. 사건 유형, 엔티티, 검수 상태 필터는 scope 계산 뒤 추가 적용된다.
-
-## 12. 검수와 편집의 영향
-
-- 이름 또는 설명 수정 시 `suggested` 항목은 `edited`로 바뀐다.
-- 인물·장소 상태를 변경하면 연결된 mention 상태도 함께 바뀐다.
-- `rejected` 객체와 사건은 상태·관계 재계산에서 제외된다.
-- 사건 요약 수정은 해당 사건 객체에 즉시 반영된다.
-- 수동 사건은 현재 segment와 source span을 사용하고 confidence `1`로 생성된다.
-- 인물 별칭은 쉼표 구분 입력으로 편집한다.
-
-현재 편집은 메모리에서 이루어진다. 유지하려면 **현재 결과 저장**으로 스냅샷을 저장해야 한다.
-
-## 13. 저장
-
-브라우저 스냅샷 키는 `novel-if-reader:snapshot:v2`다.
-
-저장 항목:
-
-- 전체 `analysis`
-- 현재 원문
-- 현재 sample ID
-- 업로드 문서 메타데이터
-
-저장 위치는 현재 브라우저의 `localStorage`이며 서버·다른 브라우저·다른 기기와 동기화되지 않는다.
-
-## 14. 출력 형식
-
-모든 출력은 현재 스포일러 scope와 상태 필터를 적용한다.
-
-| 형식 | 내용 |
-|---|---|
-| JSON | scope가 적용된 전체 분석 객체 |
-| CSV | 사건 ID, segment, 유형, 상태, 신뢰도, 참여 객체, 요약, 원문 근거 |
-| Markdown | 문서 제목과 인물·장소·사건 요약 |
-| TimelineJS | segment 순서를 날짜처럼 변환한 TimelineJS 호환 JSON |
-| Graph JSON | character/location/event node와 relation edge |
-
-현재 UI는 textarea에 결과를 표시하고 클립보드 복사만 제공한다.
-
-## 15. 서버 API
-
-### `GET /api/ollama/models`
-
-Ollama `/api/tags`를 조회하고 completion capability 및 4B~7B 조건을 만족하는 모델만 반환한다.
-
-성공 응답:
-
-```json
-{
-  "models": [
-    {
-      "name": "qwen3.5:4b",
-      "parameter_size": "4B",
-      "context_length": 8192,
-      "installed": true,
-      "allowed": true
-    }
-  ]
-}
-```
-
-### `POST /api/analyze/ollama`
-
-요청:
-
-```json
-{
-  "text": "소설 원문",
-  "model": "qwen3.5:4b"
-}
-```
-
-응답:
-
-```json
-{
-  "model": "qwen3.5:4b",
-  "mode": "scene",
-  "analysis": {
-    "characters": [],
-    "locations": [],
-    "event_frames": [],
-    "relationships": [],
-    "state_changes": []
-  },
-  "diagnostics": {
-    "prompt_version": "scene-v2",
-    "target_chars": 1000,
-    "scenes_total": 6,
-    "scenes_failed": [],
-    "cache": "miss"
-  }
-}
-```
-
-`scenes_total`과 `scenes_failed`의 `scene` 번호는 호환성을 위해 유지한 필드명이며,
-여기서 scene은 화면의 `Scene`이 아니라 Ollama 분석 청크를 뜻한다. SSE의
-`progress.scene`과 `progress.total`도 같은 분석 청크 번호와 전체 개수다.
-
-빈 원문 또는 허용 범위 밖 모델은 `400`, Ollama 연결·응답·JSON 파싱 실패는 `502`를 반환한다. Express JSON 본문 제한은 2MB다.
-
-## 16. 테스트
-
-```powershell
-npm.cmd test
-```
-
-현재 회귀 테스트는 다음을 검증한다.
-
-- 한국어 인물과 장소 핵심 명사의 분리
-- 형용사·부사·조사·일반 명사의 객체 오인 방지
-- 공백이 포함된 문장 조각을 장소명으로 생성하지 않음
-- 「감자」를 외부 TXT처럼 분석해도 주요 인물·장소가 유지됨
-- 긴 단편과 단일 장문 문단이 1,000자 이하 분석 청크로 분할됨
-- 청크별 추출 병합, 부분 실패, evidence 검증과 관계 화이트리스트
-
-Python fallback은 동일 fixture를 `build_regex_context()`에 전달해 별도로 검증할 수 있다.
-
-## 17. 알려진 제약과 설계 판단
-
-### 정확도 우선 외부 문서 분석
-
-일반 규칙만으로 한국어 고유명사와 보통명사를 완전히 분리할 수 없다. 현재 구현은 잘못된 객체를 대량 생성하는 것보다 단서가 약한 1회성 이름을 누락하는 쪽을 선택한다.
-
-### 단순 장면 분할
-
-Scene은 의미 변화가 아니라 약 1,000자 이하 segment 개수를 기준으로 최대 12개 그룹으로 나눈다. 사건 순서 탐색용 임시 단위이며 서사학적 장면 판정이 아니다. Ollama 진행률에 표시되는 분석 청크와 화면의 Scene은 서로 다른 단위다.
-
-### 제한된 공지시 처리
-
-대명사, 생략 주어, 별칭 군집, 동일 인물 병합은 완전하게 해결되지 않았다. LLM 관계와 원문 mention을 이용해 일부 보정하지만 검수가 필요하다.
-
-### 로컬 LLM 의존성
-
-Ollama 결과의 품질과 처리 시간은 모델·하드웨어·원문 길이에 따라 달라진다. 서버는 외부 지식을 조회하지 않으며 Ollama JSON도 원문 mention과 연결되지 않으면 객체로 병합하지 않는다.
-
-### 브라우저 전용 저장
-
-스냅샷은 데이터베이스가 아니며 브라우저 데이터 삭제 시 함께 사라진다.
-
-## 18. 다음 우선순위
-
-1. 외부 작품 fixture를 늘려 인물·장소 경계 규칙을 회귀 검증한다.
-2. 인물·장소 병합/분리와 alias 이동을 지원하는 검수 UI를 추가한다.
-3. 대명사·생략 주어를 기존 인물에 연결하는 한국어 공지시 단계를 분리한다.
-4. Ollama seed에 대한 구조·근거 검증을 강화한다.
-5. semantic scene 분할을 현재 단순 그룹 방식과 교체 가능한 adapter로 추가한다.
-6. 파일 다운로드 또는 서버 저장이 필요해질 때 현재 analysis schema를 그대로 영속화한다.
+| `Character` | `character_id`, `canonical_name`, `aliases`, `mentions`, `first_segment_id`, `description`, `role`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
+| `Location` | `location_id`, `name`, `aliases`, `mentions`, `first_segment_id`, `type`, `parent_name`, `parent_location_id`, `description`, `narrative_coords`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
+| `Event` | `event_id`, `document_id`, `type`, `summary`, `segment_id`, `scene_id`, `sentence_index`, `characters`, `locations`, `source_span`, `status`, `confidence`, `method` |
+| `CharacterState` | `state_id`, `character_id`, `segment_id`, `location_id`, `mental_state`, `physical_state`, `known_facts`, `source_event_ids`, `status`, `valid_from`, `valid_to`, `invalidated_by` |
+| `Relation` | `relation_id`, `source_type`, `source_id`, `target_type`, `target_id`, `relation_type`, `event_ids`, `segment_ids`, `weight`, `status`, `valid_from`, `valid_to`, `invalidated_by` |
+
+상태값: `suggested`(자동 제안) · `confirmed`(확정) · `edited`(수정) · `rejected`(제외) ·
+`manual`(직접 생성). `active` 필터는 저장값이 아니라 "`rejected`가 아님"을 뜻한다.
+
+사건 유형: `appearance`, `movement`, `conversation`, `perception`, `conflict`,
+`realization`, `stasis`, `symbolic`, `background`.
+
+규칙 채널이 만드는 관계는 `participates_in`(character→event), `appears_in`
+(character→location), `takes_place_at`(event→location) 셋뿐이다. 인물 간 관계
+(`knows`, `family_of`, `enemy_of` 등)는 계약과 LLM 화이트리스트에는 있지만 규칙으로는
+만들지 않는다 — 근거 없이 만드느니 비운다.
+
+## 6. 서사 시간 (`src/core/asof.js`)
+
+시간 좌표는 segment id가 아니라 **segment index(1부터인 정수)**다. 구간 비교가 가능해야
+하고, 나중에 EPUB 챕터나 CFI로 재사상할 수 있어야 한다. `0`은 좌표 없음이며 어떤
+시점에도 보이지 않는다. `valid_to: null`은 열린 구간이다.
+
+술어 두 개를 구분한다. 이 구분이 모듈의 핵심이다.
+
+| 술어 | 정의 | 쓰임 |
+| --- | --- | --- |
+| KNOWN(t) | `valid_from <= t` | 독자가 읽어서 **알게 된** 사실. 스포일러 범위 |
+| TRUE(t) | `valid_from <= t <= valid_to` | 그 시점에 **여전히 유효한** 사실. 현재 상태 조회 |
+
+퇴장한 인물이나 끝난 관계도 KNOWN으로 남는다. 이미 읽었기 때문이다.
+
+같은 인물의 다음 상태 레코드가 이전 구간을 닫고, 그 레코드를 만든 사건이
+`invalidated_by`가 된다. 이전 상태를 지우지 않으므로 "왜 바뀌었는가"를 사건 하나로
+되짚을 수 있다. 규칙 채널은 인물·장소·관계의 `valid_to`를 채우지 않는다 — 원문에서
+퇴장·단절을 근거 있게 판정할 방법이 없다. 필드는 계약으로 존재하며 검수·LLM이 채운다.
+
+**판정은 `asOf()` 한 곳에만 있다.** `src/app/utils.js`의 `isVisibleSegmentId`도 `isKnownAt()`에
+위임하고, `src/app/view/selectors.js`는 `asOf()` 결과에 표시 필터만 얹는다.
+`index <= currentSegment` 비교를 다른 곳에 다시 쓰면 판정이 두 벌이 되고, 어긋난 지점이
+곧 누출이다. `/check` 경로는 검수 대상 전체를 봐야 하므로 시점 제한을 끈다.
+
+## 7. 제약 감사 (`src/core/audit.js`)
+
+`diagnostics.audit = { counts, violations[] }`, violation은
+`{ code, severity, target_type, target_id, segment_index, message }`다.
+
+| code | 판정 | 등급 |
+| --- | --- | --- |
+| `actor` | 사건 참여 인물의 mention이 그 단락에 없다 | error |
+| `scope` | 근거 offset이 단락 범위 밖이거나 근거가 없다 | error |
+| `polarity` | 부정 표현이 있는 문장에서 실제 행동 사건을 추출했다 | warn |
+| `state` | 같은 시점에 모순된 상태 / 아직 등장하지 않은 장소를 현재 위치로 지목 | error |
+| `temporal` | 구간이 뒤집히거나 겹치거나 인물 첫 등장보다 앞선다 | error |
+
+감사는 **판정만 하고 고치지 않는다.** 자동 확정을 금지하는 것과 같은 이유다.
+`asOf()`가 감사 결과도 시점으로 잘라내므로 아직 읽지 않은 구간의 위반은 보이지 않는다.
+`warn`은 휴리스틱 의심이므로 원문을 보고 판단한다. 일괄 제외하면 안 된다.
+
+## 8. what-if 분기 (`src/core/whatif.js`, `src/server/whatif.js`)
+
+분기 시드는 `asOf(fork)` 스냅샷뿐이고 **분기 시점 이후의 원문·사건은 프롬프트에 들어가지
+않는다.** 서버는 `seed.text`나 `seed.segments`가 있으면 400으로 거부한다. 모델에게
+원작을 베낄 재료를 주지 않는 것이 유일하게 확실한 방법이며, 생성 후
+`detectCanonLeak()`이 분기 이후 원문·사건 요약과 12자 이상 연속 일치하는지 다시 본다.
+
+호출은 2단계다 — 대안 행동 제안, 그다음 선택별 전개. 한 호출 = 한 작업 원칙은 추출
+파이프라인과 같다. 생성이므로 `temperature`는 0.1이 아니라 0.6이다. 같은 전제로 다시
+돌리면 다른 전개가 나와야 하므로 **캐시하지 않는다.**
+
+산문이 아니라 사건 프레임과 상태 변화만 만든다. 그래야 구조화 출력으로 강제할 수 있고
+검증도 계약 검사로 가능하다. 결과는 `branches[]`에만 쌓이고 원작 컬렉션을 바꾸지 않는다.
+
+| `branches[]` 필드 | 의미 |
+| --- | --- |
+| `branch_id` / `parent_branch_id` | 분기 id와 부모. 원작은 `canon` |
+| `fork_segment` / `fork_event_id` | 갈라진 시점과 그 사건 |
+| `premise` | 분기 전제 한 문장 |
+| `events[]` | `origin: "generated"`, `status: "suggested"`. `segment_id`도 `source_span`도 없다 |
+| `states[]` | 인물별 심리·신체·위치 변화와 이를 일으킨 사건 |
+| `diagnostics.canon_leak[]` | 분기 이후 원작을 인용한 지점 |
+| `diagnostics.unknown_characters[]` | 그 시점에 없어 제거된 이름 |
+| `rubric` | 사람이 매긴 3점 채점(주제 일관성·상태 정합성·구조 완결성) |
+
+품질은 자동 채점하지 않는다. 서사 품질은 계약 검사로 판정할 수 없다. 자동으로 알 수 있는
+것(원작 인용, 미등장 인물, 행위자 없는 사건)만 `branchIssues()`가 잡는다.
+
+## 9. 입력
+
+| 입력 | seed | Scene |
+| --- | --- | --- |
+| 「날개」 / 「감자」 | 작품별 정적 seed | 균등 분할 |
+| TXT 업로드 | 원문에서 만든 동적 seed | 균등 분할 |
+| EPUB 업로드 | 동적 seed | **실제 챕터 경계** |
+| 위키문헌 | 동적 seed | 균등 분할 |
+
+EPUB 리더(`src/core/epub.js`)는 의존성이 없다. 표준 `DecompressionStream("deflate-raw")`로
+ZIP을 풀고 OPF·XHTML을 직접 읽는다. 번들러 없이 npm 패키지를 브라우저에 넣으려면 빌드
+단계가 생기고, 그러면 "빌드 없음"이라는 구조적 장점이 사라진다. ZIP64·암호화·이미지는
+다루지 않고 본문 텍스트만 읽는다. EPUB CFI는 만들지 않는다 — XHTML DOM 경로를 재현하지
+않으면 가짜 CFI가 되므로 `source_ref`에 spine 순번과 href만 남긴다(챕터 수준 위치 지정).
+
+챕터 offset은 정규화된 최종 텍스트 기준이며, `normalizeSourceText`가 멱등이라 분석기가
+다시 정규화해도 어긋나지 않는다. 사용자가 원문을 편집하면 offset이 밀리므로 컨트롤러가
+챕터를 버리고 균등 분할로 되돌린다.
+
+위키문헌 가져오기는 `*.wikisource.org` 호스트만 허용한다 — 임의 URL을 받으면 이 서버가
+열린 프록시가 된다. 권리 표기는 자동 판정하지 않고 `unverified`로 기록하며, 이 값은
+MCP의 원문 배포 게이트에 그대로 작용한다.
+
+## 10. 화면
+
+`/`와 `/check` 두 경로 모두 같은 `index.html`을 History API로 렌더링한다.
+
+| 영역 | 내용 |
+| --- | --- |
+| Reader | 원문 입력·편집, segment 목록, 독서 위치 |
+| 관계 지도 | 현재 segment의 인물·장소·사건 연결과 Inspector |
+| 사건 흐름 | 현재 범위까지의 사건 |
+| 인물 상태 | 상태 이력, 관계, 공간 궤적 |
+| 분기 (what-if) | 분기점 선택, 전제 입력, 생성, 인용 경고, 루브릭 채점 |
+| 내보내기 | 7종 형식 생성·복사·다운로드 |
+| `/check` | 근거 강조, 신뢰도·위반 순 검수 목록, 상태 변경, 수동 사건 추가 |
+
+스냅샷은 `localStorage`의 `novel-if-reader:snapshot`에 저장된다. 서버·다른 기기와
+동기화되지 않으며 브라우저 데이터를 지우면 사라진다.
+
+## 11. MCP 계약
+
+`mcp/server.js`는 Express와 별개인 stdio 서버다. 분석하지 않고 `analyzer.js`·`core/`를
+재사용한다. 라이브러리는 `NOVEL_IF_LIBRARY`(기본 `texts/`)의 `*.txt`이며, 같은 이름의
+`*.meta.json`이 제목·저자·`rights`·`source_url`을 덮어쓴다. `document_id`는 파일 이름이고
+`analyzeNovel`의 `sample.id`로 전달되므로 내장 샘플 id와 같으면 정적 seed가 적용된다.
+
+1. 사실 조회 도구는 `as_of` 없이는 거부한다. 기본값이 곧 스포일러이므로 기본값을 두지
+   않는다. `list_works`만 예외다.
+2. 모든 사실에 `evidence`(원문 인용 + segment index), `confidence`, `status`, `method`가
+   붙는다. 근거를 만들 수 없는 항목은 응답에서 제거된다.
+3. 쓰기 도구가 없다. 확정·수정은 `/check`에서만 한다.
+4. `rights`가 `public-domain`으로 시작하지 않으면 원문 단락 제공을 거부한다. 사실 조회와
+   근거 인용은 계속 동작한다.
+
+리소스는 `novel://{document_id}/analysis/{as_of}`와 `novel://{document_id}/segment/{n}`,
+프롬프트는 `spoiler-safe-question`과 `character-interview`다. 둘 다 현재 독서 위치를
+고정하고 근거 없는 추측을 금지한다.
+
+## 12. 테스트 지도
+
+`npm test`는 Ollama·네트워크 없이 109건을 실행한다.
+
+| 파일 | 무엇을 지키는가 |
+| --- | --- |
+| `analyzer.test.mjs` | 엔티티 경계, 조사 결합형 인정, 단어 내부 매칭 금지, 두 채널 합의(actor=0) |
+| `asof.test.mjs` | 구간 부여, 단조성, 누출 없음, KNOWN/TRUE 구분, 무효화 이력 |
+| `audit.test.mjs` | 제약 5축 탐지(정상 데이터에 위반을 주입해 검증) |
+| `whatif.test.mjs` | 시드에 미래 없음, 생성물 격리, 원작 인용 검출, ink/Twee 참조 무결성 |
+| `epub.test.mjs` | ZIP·OPF 파싱, 챕터 offset 유효성, 챕터 경계 Scene |
+| `mcp_tools.test.mjs` | `as_of` 강제, 근거 동반, 권리 게이트, 어댑터 전용 규칙 |
+| `mcp_server.test.mjs` | stdio 전송 위 도구·리소스·프롬프트 노출 |
+| `scene_pipeline.test.mjs` | 청크 분할, 병합, 부분 실패, evidence 검증, 관계 화이트리스트 |
+| `ollama_merge.test.mjs` | mention 앵커링 게이트, LLM 항목의 `suggested` 진입 |
+| `server_api.test.mjs` | HTTP 계약, SSE, 캐시, what-if 프롬프트에 미래 없음 |
+| `wikisource.test.mjs` | 호스트 제한, 구조화 오류 |
+| `module_wiring.test.mjs` | import 없이 호출하는 함수 없음 |
+| `asof_qa.test.mjs` | 시점 질의 평가셋 전체 통과와 누출 0 |
+
+평가는 두 축이다. `npm run eval`은 골든셋 precision/recall,
+`npm run eval:qa`는 "그 시점에 답할 수 있는가 / 미래를 흘리지 않는가"를 잰다.
+외부 벤치마크 수치를 완료 기준으로 쓰지 않는다. 기준은 이 저장소의 골든셋이다.
+
+## 13. 알려진 한계
+
+- 대명사·생략 주어·동일 인물 병합은 해결되지 않았다. 「복녀의 남편」과 「남편」이 별개
+  인물로 갈라지는 것이 대표 사례다.
+- `polarity` 경고는 부정의 작용 범위를 보지 않는다. 「날개」에서 78건이 뜬다.
+- Scene은 챕터를 모르는 입력에서 서사학적 판정이 아니라 탐색용 균등 분할이다.
+- 상세 분석 품질과 시간은 모델·하드웨어·원문 길이에 따라 달라진다.
+- 저장은 브라우저 전용이고 서버는 분석 결과를 보관하지 않는다.
+- 개발·테스트는 Node v23.3에서 검증했다. EPUB 읽기가 `DecompressionStream("deflate-raw")`에
+  의존하므로 구버전 Node에서는 EPUB 경로와 그 테스트가 동작하지 않을 수 있다.

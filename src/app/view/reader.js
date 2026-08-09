@@ -1,22 +1,10 @@
 import { state, els, STATUS } from "../context.js";
+import { renderAll } from "../views.js";
 import {
-  csvCell,
-  drawSvgText,
   escapeAttr,
   escapeHtml,
   eventTypeLabel,
-  getEntity,
-  isCurrentSegmentId,
-  isVisibleSegmentId,
-  kindLabel,
-  latestStateForCharacter,
-  matchesEntityFilter,
   nameOf,
-  segmentOrder,
-  sourceTextForSpan,
-  statusClass,
-  statusMatches,
-  svgEl,
   unique
 } from "../utils.js";
 
