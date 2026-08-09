@@ -7,4 +7,7 @@ dist/
 *.log
 npm-debug.log*
 .DS_Store
-.claude/
+
+# Claude Code: 스킬은 저장소 자산이므로 공유하고, 로컬 전용 설정만 제외한다.
+.claude/settings.local.json
+.claude/*.local.json
