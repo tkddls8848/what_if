@@ -36,7 +36,7 @@ test("exposes read-only tools, resources and prompts over stdio", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name).sort();
     assert.deepEqual(names, [
-      "arc_summary", "evidence_for", "graph_as_of", "list_works",
+      "annotations_as_of", "arc_summary", "evidence_for", "graph_as_of", "list_works",
       "read_segment", "state_as_of", "timeline_as_of", "whatif_seed", "who_is"
     ]);
 
@@ -55,7 +55,7 @@ test("exposes read-only tools, resources and prompts over stdio", async () => {
 test("as_of is a required argument in the published tool schemas", async () => {
   await withClient(async (client) => {
     const { tools } = await client.listTools();
-    const factTools = ["state_as_of", "who_is", "timeline_as_of", "graph_as_of", "arc_summary", "whatif_seed"];
+    const factTools = ["state_as_of", "who_is", "timeline_as_of", "graph_as_of", "arc_summary", "whatif_seed", "annotations_as_of"];
     factTools.forEach((name) => {
       const tool = tools.find((item) => item.name === name);
       assert.ok(tool.inputSchema.required.includes("as_of"), `${name}의 as_of가 선택 인자다`);

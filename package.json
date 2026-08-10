@@ -10,7 +10,8 @@
     "mcp": "node --no-warnings mcp/server.js",
     "audit": "node --no-warnings scripts/audit_report.mjs",
     "eval": "node --no-warnings scripts/eval_extraction.mjs",
-    "eval:qa": "node --no-warnings scripts/eval_asof_qa.mjs"
+    "eval:qa": "node --no-warnings scripts/eval_asof_qa.mjs",
+    "verify:refs": "node --no-warnings scripts/verify_references.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

@@ -552,6 +552,73 @@ input[type="range"] {
   font-size: 12px;
 }
 
+/* 시대 주석 — 링크만 보여 준다. 설명 서술은 이 앱이 만들지 않는다. */
+.annotation-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.annotation-block h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.annotation-hint {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--muted-2);
+}
+
+.annotation-block ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.annotation-block li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.annotation-term {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.annotation-category {
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.annotation-links a {
+  color: var(--accent-2);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(124, 199, 189, 0.35);
+}
+
+.annotation-links a:hover {
+  color: var(--accent-2-strong);
+}
+
+.annotation-note {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .tabs {
   display: flex;
   gap: 4px;

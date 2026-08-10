@@ -33,7 +33,8 @@ export function auditAnalysis(analysis) {
     ...auditScope(analysis),
     ...auditPolarity(analysis),
     ...auditState(analysis),
-    ...auditTemporal(analysis)
+    ...auditTemporal(analysis),
+    ...auditReference(analysis)
   ].sort((a, b) => a.segment_index - b.segment_index || a.code.localeCompare(b.code));
 
   return { counts: countBy(violations), violations };
@@ -295,6 +296,58 @@ function auditTemporal(analysis) {
 }
 
 /* ------------------------------------------------------------------ */
+/* reference — 시대 주석의 앵커가 원문과 맞고 링크가 쓸 수 있는 것인가      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 주석은 서술을 만들지 않고 링크만 건다. 그래서 이 기능이 무너지는 경로는 둘뿐이다:
+ * 앵커가 원문의 엉뚱한 자리를 가리키거나, 링크가 못 쓸 것이거나. 둘 다 `error`다 —
+ * 휴리스틱 의심이 아니라 계약 위반이기 때문이다.
+ */
+const REFERENCE_HOSTS = /^(?:[a-z-]{2,12}\.)?(?:wikipedia|wikisource)\.org$/u;
+
+function auditReference(analysis) {
+  const segments = new Map((analysis.segments || []).map((segment) => [segment.segment_id, segment]));
+  const violations = [];
+
+  (analysis.annotations || []).filter(ACTIVE).forEach((annotation) => {
+    const segment = segments.get(annotation.segment_id);
+    const index = segmentIndexOf(analysis, annotation.segment_id);
+    const add = (message) => violations.push(violation({
+      code: "reference",
+      severity: "error",
+      target_type: "annotation",
+      target_id: annotation.annotation_id,
+      segment_index: index,
+      message
+    }));
+
+    const quoted = spanText(segment, annotation);
+    if (quoted !== annotation.text) {
+      add(`주석 앵커가 원문과 다릅니다. 기록 "${annotation.text}" · 원문 "${quoted}"`);
+    }
+    if (!annotation.references?.length) {
+      add(`'${annotation.term}' 주석에 출처 링크가 없습니다. 링크가 없으면 주석이 아무것도 알려주지 않습니다.`);
+    }
+    (annotation.references || []).forEach((reference) => {
+      let url = null;
+      try {
+        url = new URL(reference.url);
+      } catch {
+        add(`'${annotation.term}'의 링크가 URL 형식이 아닙니다: ${reference.url}`);
+        return;
+      }
+      if (url.protocol !== "https:") add(`'${annotation.term}'의 링크가 https가 아닙니다: ${reference.url}`);
+      else if (!REFERENCE_HOSTS.test(url.hostname)) {
+        add(`'${annotation.term}'의 링크 호스트가 허용 목록 밖입니다: ${url.hostname}`);
+      }
+    });
+  });
+
+  return violations;
+}
+
+/* ------------------------------------------------------------------ */
 
 function characterNameLookup(analysis) {
   const byId = new Map((analysis.characters || []).map((character) => [character.character_id, character.canonical_name]));
@@ -321,7 +374,7 @@ function violation(input) {
 }
 
 function emptyCounts() {
-  return { total: 0, error: 0, warn: 0, actor: 0, scope: 0, polarity: 0, state: 0, temporal: 0 };
+  return { total: 0, error: 0, warn: 0, actor: 0, scope: 0, polarity: 0, state: 0, temporal: 0, reference: 0 };
 }
 
 function countBy(violations) {

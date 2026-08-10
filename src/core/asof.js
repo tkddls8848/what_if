@@ -102,6 +102,12 @@ export function annotateEntityIntervals(analysis) {
     location.valid_from = segmentIndexOf(analysis, location.first_segment_id);
     if (location.valid_to === undefined) location.valid_to = null;
   });
+  // 시대 주석도 서사 시간 위에 있다. 아직 읽지 않은 단락의 주석을 보여 주면 그 자체가
+  // 누출이다 — 「날개」의 `아달린`은 그 낱말이 나오는 순간이 곧 사건이다.
+  analysis.annotations?.forEach((annotation) => {
+    annotation.valid_from = segmentIndexOf(analysis, annotation.segment_id);
+    if (annotation.valid_to === undefined) annotation.valid_to = null;
+  });
   return analysis;
 }
 
@@ -191,7 +197,8 @@ export function factsAt(analysis, t, { statuses = "active" } = {}) {
     characters: (analysis.characters || []).filter((item) => matches(item.status) && isTrueAt(item, t)),
     locations: (analysis.locations || []).filter((item) => matches(item.status) && isTrueAt(item, t)),
     states: (analysis.states || []).filter((item) => matches(item.status) && isTrueAt(item, t)),
-    relations: (analysis.relations || []).filter((item) => matches(item.status) && isTrueAt(item, t))
+    relations: (analysis.relations || []).filter((item) => matches(item.status) && isTrueAt(item, t)),
+    annotations: (analysis.annotations || []).filter((item) => matches(item.status) && isKnownAt(item, t))
   };
 }
 
@@ -230,6 +237,7 @@ export function asOf(analysis, t, { spoilerSafe = true, statuses = "active" } = 
     events: (analysis.events || []).filter((event) => visible(event.segment_id) && matches(event.status)),
     states: (analysis.states || []).filter((item) => visible(item.segment_id) && matches(item.status)),
     relations: (analysis.relations || []).filter((item) => matches(item.status) && isKnownAt(item, at)),
+    annotations: (analysis.annotations || []).filter((item) => visible(item.segment_id) && matches(item.status)),
     audit: scopeAudit(analysis.diagnostics?.audit, at),
     diagnostics: analysis.diagnostics
   };

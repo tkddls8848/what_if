@@ -60,6 +60,37 @@ test("does not create sentence fragments when a bundled sample is loaded as exte
   );
 });
 
+test("a surname separated by a space stays attached to its title", () => {
+  // 토큰이 `[가-힣]+`이라 공백을 넘지 못한다. 되붙이지 않으면 「감자」의 필수 인물
+  // `왕 서방`이 통째로 빠지고, 사람을 가르지 못하는 칭호 `서방`이 대신 인물이 된다.
+  const characters = analyzeExternal(fs.readFileSync(new URL("../texts/gamja.txt", import.meta.url), "utf8"))
+    .characters.map((item) => item.canonical_name);
+
+  assert.ok(characters.includes("왕 서방"));
+  assert.ok(!characters.includes("서방"), "칭호 단독은 같은 등장을 나눠 가지면 안 된다");
+});
+
+test("collective references and dialogue-only pronouns are not characters", () => {
+  const characters = analyzeExternal(fs.readFileSync(new URL("../texts/gamja.txt", import.meta.url), "utf8"))
+    .characters.map((item) => item.canonical_name);
+
+  // `부처`(=부부)·`여인들`·`중국인들`은 무리이지 한 사람이 아니다.
+  assert.deepEqual(characters.filter((name) => ["부처", "여인들", "중국인들", "그들"].includes(name)), []);
+  // 「감자」는 3인칭이다. `나`는 대사 안에서만 쓰이므로 서술자가 아니다.
+  assert.ok(!characters.includes("나"));
+  // 근거가 1회뿐인 친족·직함 보통명사도 인물이 아니다.
+  assert.deepEqual(characters.filter((name) => ["아버지", "노인", "장인"].includes(name)), []);
+});
+
+test("a first-person narrator is still recovered from narration", () => {
+  // 위 규칙이 서술자까지 지우면 안 된다. 「날개」는 서술부에만 `나`가 54회 나온다.
+  const characters = analyzeExternal(fs.readFileSync(new URL("../texts/wings.txt", import.meta.url), "utf8"))
+    .characters.map((item) => item.canonical_name);
+
+  assert.ok(characters.includes("나"));
+  assert.ok(characters.includes("아내"));
+});
+
 test("a trailing Korean particle does not hide a mention", () => {
   const analysis = analyzeSample("gamja.txt", "gamja");
 
@@ -67,6 +98,19 @@ test("a trailing Korean particle does not hide a mention", () => {
   assert.ok(mentionTexts(analysis, "character", "복녀").includes("복녀도"));
   // 별칭에 열거되지 않은 조사형도 잡혀야 한다 — 열거로 때우면 언제나 빠지는 게 생긴다.
   assert.ok(mentionTexts(analysis, "location", "채마 밭").includes("채마 밭에"));
+});
+
+test("stacked particles and single-syllable names survive without enumerated aliases", () => {
+  // 별칭에서 조사형 열거를 뺄 때 드러난 두 구멍이다. 열거가 죽은 무게로만 보였지만
+  // 실제로는 이 둘을 떠받치고 있었다. 규칙으로 옮겼으므로 규칙이 지켜지는지 본다.
+  const wings = analyzeSample("wings.txt", "wings");
+  // `에게`+`는`처럼 겹친 조사는 결합형이 목록에 있어야 통째로 잡힌다.
+  assert.ok(mentionTexts(wings, "character", "아내").includes("아내에게는"));
+
+  // 한 글자 이름은 별칭 최소 길이(2)에 걸려 맨몸으로는 매칭에 쓰이지 못한다.
+  const gamja = analyzeExternal(fs.readFileSync(new URL("../texts/gamja.txt", import.meta.url), "utf8"));
+  assert.ok(gamja.locations.map((item) => item.name).includes("집"));
+  assert.ok(mentionTexts(gamja, "location", "집").some((text) => text.startsWith("집")));
 });
 
 test("an alias inside a longer Korean word is not a mention", () => {

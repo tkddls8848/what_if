@@ -98,6 +98,7 @@ import하고 위쪽을 참조하지 않는다. `src/app/`과 `mcp/`는 `src/core
 analysis
 ├─ document, segments[], scenes[], mentions[]
 ├─ characters[], locations[], events[], states[], relations[]
+├─ annotations[]     # 시대 주석. 앵커는 원문, 내용은 외부 링크
 ├─ branches[]        # what-if 생성물. 없을 수 있다
 ├─ dynamic_lexicon
 └─ diagnostics       # engine, seed_lexicon, warnings, counts, audit
@@ -113,6 +114,7 @@ analysis
 | `Location` | `location_id`, `name`, `aliases`, `mentions`, `first_segment_id`, `type`, `parent_name`, `parent_location_id`, `description`, `narrative_coords`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
 | `Event` | `event_id`, `document_id`, `type`, `summary`, `segment_id`, `scene_id`, `sentence_index`, `characters`, `locations`, `source_span`, `status`, `confidence`, `method` |
 | `CharacterState` | `state_id`, `character_id`, `segment_id`, `location_id`, `mental_state`, `physical_state`, `known_facts`, `source_event_ids`, `status`, `valid_from`, `valid_to`, `invalidated_by` |
+| `Annotation` | `annotation_id`, `document_id`, `term`, `category`, `era`, `segment_id`, `text`, `char_start`, `char_end`, `references[{label,url,source}]`, `note`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
 | `Relation` | `relation_id`, `source_type`, `source_id`, `target_type`, `target_id`, `relation_type`, `event_ids`, `segment_ids`, `weight`, `status`, `valid_from`, `valid_to`, `invalidated_by` |
 
 상태값: `suggested`(자동 제안) · `confirmed`(확정) · `edited`(수정) · `rejected`(제외) ·
@@ -163,10 +165,35 @@ analysis
 | `polarity` | 부정 표현이 있는 문장에서 실제 행동 사건을 추출했다 | warn |
 | `state` | 같은 시점에 모순된 상태 / 아직 등장하지 않은 장소를 현재 위치로 지목 | error |
 | `temporal` | 구간이 뒤집히거나 겹치거나 인물 첫 등장보다 앞선다 | error |
+| `reference` | 주석 앵커가 원문과 어긋나거나 출처 링크가 없거나 허용 밖 호스트다 | error |
 
 감사는 **판정만 하고 고치지 않는다.** 자동 확정을 금지하는 것과 같은 이유다.
 `asOf()`가 감사 결과도 시점으로 잘라내므로 아직 읽지 않은 구간의 위반은 보이지 않는다.
 `warn`은 휴리스틱 의심이므로 원문을 보고 판단한다. 일괄 제외하면 안 된다.
+
+## 7-1. 시대 주석 (`PERIOD_TERM_LEXICON`)
+
+역사·문화 맥락은 정의상 원문에 없다. 그래서 1원칙("모든 주장은 원문 offset으로 되짚을 수
+있어야 한다")을 지키려면 주석을 둘로 쪼개야 한다.
+
+- **앵커**는 원문 span이다. 어디에 붙는지는 언제나 원문으로 되짚인다. `reference` 감사가
+  앵커 문자열과 원문이 일치하는지 매번 확인한다.
+- **내용**은 만들지 않는다. 외부 링크만 건다. 자동 채널은 `note`를 **언제나 빈 문자열로**
+  두고, 사람이 `/check`에서 채우면 그 항목이 `edited`가 된다.
+
+로컬 4B 모델이 쓴 역사 서술은 검증할 방법이 없고, 틀린 맥락은 없는 맥락보다 나쁘다.
+그래서 이 채널만은 LLM을 쓰지 않는다 — 앱 전체에서 유일하게 "생성하지 않는 것"이 설계다.
+
+용어 매칭은 별칭 단일 규칙(`aliasPattern()`)을 그대로 쓴다. 용어도 조사를 받으므로
+(`경성역으로`) 여기서 규칙을 새로 쓰면 화면과 에이전트의 답이 갈라진다. 한 단락에서 같은
+용어는 한 번만 단다.
+
+주석도 서사 시간 위에 있다. 아직 읽지 않은 단락의 주석을 보여 주면 그 자체가 누출이다 —
+「날개」의 `아달린`은 그 낱말이 나오는 순간이 곧 사건이다.
+
+출처 링크는 `scripts/verify_references.mjs`가 실존·동음이의·리다이렉트를 확인한다.
+사전에 항목을 추가하면 반드시 돌려라. 이 기능에서 깨진 링크는 유일하게 치명적인 결함이다.
+네트워크가 없으면 실패가 아니라 건너뛴다.
 
 ## 8. what-if 분기 (`src/core/whatif.js`, `src/server/whatif.js`)
 
@@ -250,6 +277,7 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 3. 쓰기 도구가 없다. 확정·수정은 `/check`에서만 한다.
 4. `rights`가 `public-domain`으로 시작하지 않으면 원문 단락 제공을 거부한다. 사실 조회와
    근거 인용은 계속 동작한다.
+5. `annotations_as_of`는 **링크만** 돌려준다. 역사 서술을 생성하지 않는다.
 
 리소스는 `novel://{document_id}/analysis/{as_of}`와 `novel://{document_id}/segment/{n}`,
 프롬프트는 `spoiler-safe-question`과 `character-interview`다. 둘 다 현재 독서 위치를
@@ -257,7 +285,7 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 
 ## 12. 테스트 지도
 
-`npm test`는 Ollama·네트워크 없이 109건을 실행한다.
+`npm test`는 Ollama·네트워크 없이 119건을 실행한다.
 
 | 파일 | 무엇을 지키는가 |
 | --- | --- |
@@ -274,9 +302,11 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 | `wikisource.test.mjs` | 호스트 제한, 구조화 오류 |
 | `module_wiring.test.mjs` | import 없이 호출하는 함수 없음 |
 | `asof_qa.test.mjs` | 시점 질의 평가셋 전체 통과와 누출 0 |
+| `annotations.test.mjs` | 주석 앵커 무결성, 자동 채널이 서술을 안 만듦, 링크 허용 호스트, 시점 가림 |
 
 평가는 두 축이다. `npm run eval`은 골든셋 precision/recall,
 `npm run eval:qa`는 "그 시점에 답할 수 있는가 / 미래를 흘리지 않는가"를 잰다.
+`npm run verify:refs`는 네트워크가 있을 때만 도는 별개 검사다 — 주석 링크의 실존을 본다.
 외부 벤치마크 수치를 완료 기준으로 쓰지 않는다. 기준은 이 저장소의 골든셋이다.
 
 ## 13. 알려진 한계

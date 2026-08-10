@@ -7,7 +7,8 @@ import {
   SNAPSHOT_KEY,
   STATUS,
   EVENT_LABELS,
-  STATUS_LABELS
+  STATUS_LABELS,
+  PERIOD_TERM_CATEGORIES
 } from "../config.js";
 
 export {
@@ -19,7 +20,8 @@ export {
   SNAPSHOT_KEY,
   STATUS,
   EVENT_LABELS,
-  STATUS_LABELS
+  STATUS_LABELS,
+  PERIOD_TERM_CATEGORIES
 };
 
 export const state = {

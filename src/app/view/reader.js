@@ -1,4 +1,4 @@
-import { state, els, STATUS } from "../context.js";
+import { state, els, STATUS, PERIOD_TERM_CATEGORIES } from "../context.js";
 import { renderAll } from "../views.js";
 import {
   escapeAttr,
@@ -50,6 +50,7 @@ export function renderReader() {
       ${characterNames.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}
       ${locationNames.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}
     </div>
+    ${renderAnnotations(analysis, segment)}
   `;
   card.querySelectorAll("[data-reader-step]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -60,6 +61,39 @@ export function renderReader() {
   });
   els.segmentList.appendChild(card);
   highlightSourceSegment(segment);
+}
+
+/**
+ * 이 문단의 시대 주석.
+ *
+ * 이 블록은 **링크만** 보여 준다. 설명을 지어내지 않는 것이 계약이고, 그래서 화면도
+ * "이 말이 무엇인지는 여기서 읽어라"까지만 한다. `note`는 사람이 검수에서 채웠을 때만
+ * 나온다. 주석은 활성 문단에 달린 것만 그리므로 아직 읽지 않은 단락은 자연히 가려진다.
+ */
+function renderAnnotations(analysis, segment) {
+  const annotations = (analysis.annotations || [])
+    .filter((item) => item.segment_id === segment.segment_id && item.status !== STATUS.REJECTED);
+  if (!annotations.length) return "";
+
+  const items = annotations.map((annotation) => {
+    const links = annotation.references
+      .map((reference) => `<a href="${escapeAttr(reference.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(reference.label)}</a>`)
+      .join(" · ");
+    const note = annotation.note ? `<p class="annotation-note">${escapeHtml(annotation.note)}</p>` : "";
+    return `
+      <li>
+        <span class="annotation-term">${escapeHtml(annotation.text)}</span>
+        <span class="annotation-category">${escapeHtml(PERIOD_TERM_CATEGORIES[annotation.category] || annotation.category)}</span>
+        <span class="annotation-links">${links}</span>
+        ${note}
+      </li>`;
+  }).join("");
+
+  return `
+    <section class="annotation-block">
+      <h4>이 문단의 시대 배경 <span class="annotation-hint">외부 문서로 연결됩니다</span></h4>
+      <ul>${items}</ul>
+    </section>`;
 }
 
 function highlightSourceSegment(segment) {

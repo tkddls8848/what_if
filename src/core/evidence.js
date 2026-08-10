@@ -18,6 +18,7 @@ const ID_PREFIX_TO_COLLECTION = {
   state: ["states", "state_id", "state"],
   rel: ["relations", "relation_id", "relation"],
   mention: ["mentions", "mention_id", "mention"],
+  note: ["annotations", "annotation_id", "annotation"],
   seg: ["segments", "segment_id", "segment"],
   scene: ["scenes", "scene_id", "scene"]
 };
@@ -66,7 +67,9 @@ export function evidenceOf(analysis, fact, factType, { maxChars = 240 } = {}) {
     return build(fact.segment_id, spanQuote(analysis, fact.segment_id, fact.source_span, { maxChars })
       || segmentQuote(analysis, fact.segment_id, { maxChars }));
   }
-  if (factType === "mention") {
+  if (factType === "mention" || factType === "annotation") {
+    // 주석의 근거는 용어가 실제로 놓인 자리다. 링크 내용이 아니라 **앵커**가 근거다 —
+    // 외부 서술의 진위는 이 저장소가 보증하지 않는다.
     return build(fact.segment_id, spanQuote(analysis, fact.segment_id, fact, { maxChars }));
   }
   if (factType === "state") {

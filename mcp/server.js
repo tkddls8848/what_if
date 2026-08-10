@@ -24,6 +24,7 @@ import { z } from "zod";
 import { createLibrary } from "./library.js";
 import {
   ToolError,
+  annotationsAsOf,
   arcSummary,
   evidenceForFact,
   graphAsOf,
@@ -113,6 +114,18 @@ tool("graph_as_of", {
   description: "독서 위치까지의 인물·장소·사건 노드와 관계 엣지를 돌려준다. 웹 화면의 Graph 내보내기와 같은 계약이다.",
   inputSchema: { document_id: documentId, as_of: asOfArg }
 }, (args) => graphAsOf(library, args));
+
+tool("annotations_as_of", {
+  title: "시점까지의 시대 주석",
+  description: "독서 위치까지 등장한 시대 용어와 그 외부 출처 링크를 돌려준다. 역사 서술을 생성하지 않고 링크만 준다 — 맥락이 필요하면 링크를 직접 읽어라. note는 사람이 검수에서 채운 것만 들어 있고 비어 있을 수 있다.",
+  inputSchema: {
+    document_id: documentId,
+    as_of: asOfArg,
+    category: z.enum(["all", "modern_institution", "money", "class_reproduction", "document", "mobility", "erasure"])
+      .optional()
+      .describe("주석 갈래 필터. 생략하면 전체")
+  }
+}, (args) => annotationsAsOf(library, args));
 
 tool("evidence_for", {
   title: "근거 되짚기",

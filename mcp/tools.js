@@ -185,6 +185,35 @@ export function graphAsOf(library, { document_id, as_of }) {
   };
 }
 
+/**
+ * 시점까지 읽은 범위의 시대 주석.
+ *
+ * 이 도구는 **링크만** 돌려준다. 역사 서술을 지어내지 않는 것이 계약이다 — `note`는
+ * 사람이 검수에서 채운 것만 담기고, 비어 있으면 비어 있는 채로 나간다. 에이전트가
+ * 맥락을 설명하고 싶으면 링크를 직접 읽어야 한다.
+ */
+export function annotationsAsOf(library, { document_id, as_of, category }) {
+  const { analysis } = requireDocument(library, document_id);
+  const at = requireAsOf(analysis, as_of);
+  const scoped = asOf(analysis, at);
+
+  const annotations = scoped.annotations
+    .filter((item) => !category || category === "all" || item.category === category)
+    .sort((a, b) => segmentIndexOf(analysis, a.segment_id) - segmentIndexOf(analysis, b.segment_id))
+    .map((item) => withEvidence(analysis, item, "annotation", {
+      annotation_id: item.annotation_id,
+      segment: segmentIndexOf(analysis, item.segment_id),
+      term: item.term,
+      category: item.category,
+      era: item.era,
+      note: item.note || "",
+      references: item.references
+    }))
+    .filter(Boolean);
+
+  return { document_id, as_of: at, count: annotations.length, annotations };
+}
+
 export function evidenceForFact(library, { document_id, fact_id }) {
   const { analysis } = requireDocument(library, document_id);
   const found = findFact(analysis, fact_id);

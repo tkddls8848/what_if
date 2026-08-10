@@ -61,7 +61,7 @@ export const CHARACTER_SEEDS = [
   },
   {
     canonical_name: "아내",
-    aliases: ["아내", "내 아내", "아내가", "아내는", "아내의", "아내에게"],
+    aliases: ["아내", "내 아내"],
     role: "배우자",
     description: "화자와 함께 33번지에 사는 인물. 외출과 내객을 통해 사건을 만든다."
   },
@@ -151,7 +151,7 @@ LOCATION_SEEDS.forEach((seed) => {
 CHARACTER_SEEDS.push(
   {
     canonical_name: "복녀",
-    aliases: ["복녀", "복네", "복녀는", "복녀가", "복녀의", "복녀를"],
+    aliases: ["복녀", "복네"],
     role: "주인공",
     description: "김동인 「감자」의 중심 인물.",
     sampleIds: ["gamja"]
@@ -165,14 +165,14 @@ CHARACTER_SEEDS.push(
   },
   {
     canonical_name: "왕 서방",
-    aliases: ["왕 서방", "왕서방", "왕 서방은", "왕 서방의"],
+    aliases: ["왕 서방", "왕서방"],
     role: "중심 갈등 인물",
     description: "채마 밭의 중국인 주인. 후반 갈등의 핵심 인물.",
     sampleIds: ["gamja"]
   },
   {
     canonical_name: "감독",
-    aliases: ["감독", "감독은", "감독이"],
+    aliases: ["감독"],
     role: "노동 현장 인물",
     description: "송충이 잡이 노동 장면에서 복녀의 변화를 촉발하는 인물.",
     sampleIds: ["gamja"]
@@ -266,3 +266,73 @@ export const PHYSICAL_STATE_LEXICON = [
   { state: "위험/손상", words: ["피", "상처", "죽", "쓰러", "다치", "맞", "아픔"] }
 ];
 
+
+/**
+ * 시대 용어 사전 — 장면에 붙는 역사·문화 맥락의 **앵커와 출처**.
+ *
+ * 이 앱의 1원칙은 "모든 주장은 원문 offset으로 되짚을 수 있어야 한다"인데, 역사적
+ * 맥락은 정의상 원문에 없다. 그래서 주석은 둘을 분리한다.
+ *   - 앵커: 원문 span. 어디에 붙는지는 언제나 원문으로 되짚인다.
+ *   - 출처: 외부 레퍼런스. **여기서 서술을 생성하지 않는다.**
+ *
+ * `note`를 자동으로 채우지 않는 것이 핵심이다. 4B 로컬 모델이 쓴 역사 서술은
+ * 검증할 방법이 없고, 틀린 맥락은 없는 맥락보다 나쁘다. 링크만 걸고 판단은 독자에게
+ * 넘긴다. 사람이 검수 화면에서 `note`를 채우면 그 항목은 `edited`가 된다.
+ *
+ * 모든 `url`은 `scripts/verify_references.mjs`로 실존을 확인한 것이다. 항목을 추가하면
+ * 반드시 그 스크립트를 돌려라 — 깨진 링크는 이 기능에서 유일하게 치명적인 결함이다.
+ * 리다이렉트는 최종 문서 제목으로 적는다(예: `아달린` → `카르브로말`).
+ */
+export const PERIOD_TERM_CATEGORIES = {
+  modern_institution: "근대 시설",
+  money: "돈이 움직이는 방식",
+  class_reproduction: "계급 대물림",
+  document: "제도가 도착하는 형식",
+  mobility: "국경·검문·이동",
+  erasure: "사라지는 것"
+};
+
+const KO_WIKI = (title) => ({
+  label: title,
+  url: `https://ko.wikipedia.org/wiki/${title.replace(/ /g, "_")}`,
+  source: "ko.wikipedia.org"
+});
+
+export const PERIOD_TERM_LEXICON = [
+  // ── 「감자」(1925, 평양) ──────────────────────────────────────────────
+  { term: "칠성문", aliases: ["칠성문"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("칠성문")] },
+  { term: "기자묘", aliases: ["기자묘", "기자릉"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("기자릉")] },
+  { term: "평양", aliases: ["평양"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("평양시")] },
+  { term: "대동강", aliases: ["대동강"], category: "mobility", era: "일제강점기", references: [KO_WIKI("대동강")] },
+  { term: "빈민굴", aliases: ["빈민굴"], category: "erasure", era: "일제강점기", references: [KO_WIKI("토막민"), KO_WIKI("슬럼")] },
+  { term: "소작", aliases: ["소작", "소작인", "소작농"], category: "class_reproduction", era: "일제강점기", references: [KO_WIKI("소작인"), KO_WIKI("조선_토지_조사_사업")] },
+
+  // ── 「날개」(1936, 경성) ─────────────────────────────────────────────
+  { term: "경성역", aliases: ["경성역"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("서울역")] },
+  { term: "미쓰코시", aliases: ["미쓰코시", "미쓰꼬시"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("미쓰코시")] },
+  { term: "아달린", aliases: ["아달린"], category: "document", era: "일제강점기", references: [KO_WIKI("카르브로말")] },
+  { term: "아스피린", aliases: ["아스피린"], category: "document", era: "일제강점기", references: [KO_WIKI("아스피린")] },
+  { term: "유곽", aliases: ["유곽"], category: "class_reproduction", era: "일제강점기", references: [KO_WIKI("유곽")] },
+  { term: "다방", aliases: ["다방", "끽다점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("다방")] },
+
+  // ── plan.md의 나머지 작품을 넣을 때를 위한 seed ────────────────────────
+  { term: "화신상회", aliases: ["화신상회", "화신백화점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("화신백화점")] },
+  { term: "인력거", aliases: ["인력거", "인력거꾼"], category: "erasure", era: "일제강점기", references: [KO_WIKI("인력거")] },
+  { term: "전당포", aliases: ["전당포"], category: "money", era: "일제강점기", references: [KO_WIKI("전당포")] },
+  { term: "조선은행", aliases: ["조선은행"], category: "money", era: "일제강점기", references: [KO_WIKI("조선은행")] },
+  { term: "미두", aliases: ["미두", "미두장", "미두취인소"], category: "money", era: "일제강점기", references: [KO_WIKI("선물_(금융)")] },
+  { term: "금광", aliases: ["금광", "금점"], category: "money", era: "일제강점기", references: [KO_WIKI("금광")] },
+  { term: "족보", aliases: ["족보"], category: "document", era: "일제강점기", references: [KO_WIKI("족보"), KO_WIKI("조선의_신분제도")] },
+  { term: "치안유지법", aliases: ["치안유지법"], category: "document", era: "일제강점기", references: [KO_WIKI("치안유지법")] },
+  { term: "관부연락선", aliases: ["관부연락선", "연락선"], category: "mobility", era: "일제강점기", references: [KO_WIKI("관부연락선")] },
+  { term: "경부선", aliases: ["경부선"], category: "mobility", era: "일제강점기", references: [KO_WIKI("경부선")] },
+  { term: "간도", aliases: ["간도"], category: "mobility", era: "일제강점기", references: [KO_WIKI("간도"), KO_WIKI("만주")] },
+  { term: "기생", aliases: ["기생", "권번"], category: "class_reproduction", era: "일제강점기", references: [KO_WIKI("기생"), KO_WIKI("권번")] },
+  { term: "결핵", aliases: ["결핵", "폐병"], category: "document", era: "근대", references: [KO_WIKI("결핵")] },
+  { term: "구로공단", aliases: ["구로공단"], category: "class_reproduction", era: "산업화", references: [KO_WIKI("구로공단"), KO_WIKI("산업체_부설학교")] },
+  { term: "재개발", aliases: ["재개발", "철거"], category: "erasure", era: "산업화", references: [KO_WIKI("도시_재개발")] },
+  { term: "이촌향도", aliases: ["이촌향도", "상경"], category: "erasure", era: "산업화", references: [KO_WIKI("이촌향도")] },
+  { term: "금주법", aliases: ["금주법"], category: "money", era: "세계", references: [KO_WIKI("금주법")] },
+  { term: "후미에", aliases: ["후미에"], category: "document", era: "세계", references: [KO_WIKI("후미에")] },
+  { term: "도망노예법", aliases: ["도망노예법"], category: "document", era: "세계", references: [KO_WIKI("도망노예법"), KO_WIKI("노예제")] }
+];
