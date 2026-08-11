@@ -1,4 +1,6 @@
 import { state, els, STATUS, PERIOD_TERM_CATEGORIES } from "../context.js";
+import { VISUAL_DESCRIPTION_CATEGORIES } from "../../config.js";
+import { asOf } from "../../core/asof.js";
 import { renderAll } from "../views.js";
 import {
   escapeAttr,
@@ -50,6 +52,7 @@ export function renderReader() {
       ${characterNames.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}
       ${locationNames.map((name) => `<span class="tag">${escapeHtml(name)}</span>`).join("")}
     </div>
+    ${renderDescriptions(analysis)}
     ${renderAnnotations(analysis, segment)}
   `;
   card.querySelectorAll("[data-reader-step]").forEach((button) => {
@@ -61,6 +64,39 @@ export function renderReader() {
   });
   els.segmentList.appendChild(card);
   highlightSourceSegment(segment);
+}
+
+/** 읽은 segment만 `asOf()`로 받은 뒤, 그 안의 원문 묘사 span을 대상별로 모은다. */
+function renderDescriptions(analysis) {
+  const scoped = asOf(analysis, state.currentSegment);
+  const descriptions = scoped.segments
+    .flatMap((segment) => segment.description_spans || [])
+    .filter((item) => item.status !== STATUS.REJECTED);
+  if (!descriptions.length) return "";
+
+  const groups = new Map();
+  descriptions.forEach((item) => {
+    const key = `${item.entity_type}:${item.entity_id}`;
+    const group = groups.get(key) || { name: item.entity_name, items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  });
+
+  const items = [...groups.values()].map((group) => {
+    const quotes = group.items.map((item) => {
+      const categories = item.categories
+        .map((category) => VISUAL_DESCRIPTION_CATEGORIES[category] || category)
+        .join(" · ");
+      return `<li><q>${escapeHtml(item.text)}</q> <span class="annotation-category">${escapeHtml(categories)}</span></li>`;
+    }).join("");
+    return `<li><strong>${escapeHtml(group.name)}</strong><ul>${quotes}</ul></li>`;
+  }).join("");
+
+  return `
+    <section class="annotation-block description-block">
+      <h4>읽은 범위의 시각 묘사 <span class="annotation-hint">원문 인용만 표시합니다</span></h4>
+      <ul>${items}</ul>
+    </section>`;
 }
 
 /**

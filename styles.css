@@ -1254,6 +1254,34 @@ mark.event {
   font-size: 12px;
 }
 
+.character-merge-controls {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--surface-3);
+}
+
+.character-merge-controls label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.character-merge-controls select {
+  min-width: 0;
+}
+
+.character-merge-controls small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .whatif-panel {
   display: grid;
   gap: 12px;

@@ -11,8 +11,9 @@
  *  node scripts/eval_extraction.mjs
  *  node scripts/eval_extraction.mjs --live qwen3.5:4b --out report.json
  *
- * 주의: 골든셋은 완전한 정답이 아니라 자체 기준선이다. acceptable 목록에 없는
- * 유효한 추출이 있으면 precision이 실제보다 낮게 나올 수 있다 (하한선).
+ * 주의: 골든셋은 완전한 정답이 아니라 자체 기준선이다. acceptable은 원문에서
+ * 사람이 확인한 표층 이름만 담으며, 목록에 없는 유효한 추출이 있으면 precision이
+ * 실제보다 낮게 나올 수 있다 (하한선). 기준은 doc_nextsession/README.md의 평가셋 정답 기준에 있다.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -162,6 +163,7 @@ for (const [channel, result] of Object.entries(report.channels)) {
     );
     if (r.missing.length) console.log(`    누락: ${r.missing.join(", ")}`);
     if (r.banned_hits.length) console.log(`    ⚠ 오탐(banned): ${r.banned_hits.join(", ")}`);
+    if (r.unexpected.length) console.log(`    기준 밖: ${r.unexpected.join(", ")}`);
   }
   console.log("");
 }

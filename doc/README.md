@@ -97,6 +97,7 @@ import하고 위쪽을 참조하지 않는다. `src/app/`과 `mcp/`는 `src/core
 ```text
 analysis
 ├─ document, segments[], scenes[], mentions[]
+├─ segments[].description_spans[] # 인물·장소가 주어인 절의 원문 묘사
 ├─ characters[], locations[], events[], states[], relations[]
 ├─ annotations[]     # 시대 주석. 앵커는 원문, 내용은 외부 링크
 ├─ branches[]        # what-if 생성물. 없을 수 있다
@@ -107,9 +108,10 @@ analysis
 | 객체 | 필드 |
 | --- | --- |
 | `Document` | `document_id`, `sample_id`, `title`, `author`, `publication_year`, `language`, `source`, `source_url`, `rights`, `created_at` |
-| `Segment` | `segment_id`, `document_id`, `index`, `scene_id`, `text`, `char_start`, `char_end` |
+| `Segment` | `segment_id`, `document_id`, `index`, `scene_id`, `text`, `char_start`, `char_end`, `description_spans[]` |
 | `Scene` | `scene_id`, `document_id`, `index`, `title`, `start_segment_id`, `end_segment_id`, `summary`, (EPUB) `source_ref` |
 | `Mention` | `mention_id`, `entity_type`, `entity_id`, `text`, `segment_id`, `char_start`, `char_end`, `status`, `confidence`, `method` |
+| `DescriptionSpan` | `description_id`, `entity_type`, `entity_id`, `entity_name`, `subject_text`, `subject_kind`, `categories[]`, `matched_terms[]`, `segment_id`, `text`, `char_start`, `char_end`, `image`(`null`), `status`, `confidence`, `method` |
 | `Character` | `character_id`, `canonical_name`, `aliases`, `mentions`, `first_segment_id`, `description`, `role`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
 | `Location` | `location_id`, `name`, `aliases`, `mentions`, `first_segment_id`, `type`, `parent_name`, `parent_location_id`, `description`, `narrative_coords`, `status`, `confidence`, `method`, `valid_from`, `valid_to` |
 | `Event` | `event_id`, `document_id`, `type`, `summary`, `segment_id`, `scene_id`, `sentence_index`, `characters`, `locations`, `source_span`, `status`, `confidence`, `method` |
@@ -195,6 +197,22 @@ analysis
 사전에 항목을 추가하면 반드시 돌려라. 이 기능에서 깨진 링크는 유일하게 치명적인 결함이다.
 네트워크가 없으면 실패가 아니라 건너뛴다.
 
+## 7-2. 시각 묘사 (`VISUAL_DESCRIPTION_LEXICON`)
+
+시각 묘사는 새 문장을 쓰는 채널이 아니라 **원문 절 수집기**다. `appearance`(외형),
+`clothing`(복식), `space`(공간) 어휘가 있고, 인물·장소의 별칭이 그 절의 주어이거나
+`복녀의 얼굴은`처럼 사전에 든 신체·공간 말의 소유격 주어일 때만 수집한다. 단순히 mention
+주변을 긁지 않으므로 자주 언급되는 인물의 행동·대상 문장이 묘사로 섞이지 않는다.
+
+별칭 표층형은 다른 채널과 똑같이 `aliasPattern()` 하나로 찾는다. 문서가 길수록 우연한
+어휘 하나만으로 통과하지 않도록 근거 문턱은 segment 수에 비례하되, 한두 문단짜리 입력은
+주어와 묘사 어휘 하나만 있어도 동작한다.
+
+결과는 `segments[].description_spans[]`에 원문 절과 전역 문자 offset으로 저장한다.
+리더와 MCP 분석 리소스는 `asOf()`가 돌려준 segment 안의 span만 사용하므로 아직 읽지 않은
+묘사가 새지 않는다. `image`는 현재 항상 `null`이다. 이미지 생성·프롬프트 조립은 묘사
+레이어 품질을 별도로 검증할 때까지 계약에 없다.
+
 ## 8. what-if 분기 (`src/core/whatif.js`, `src/server/whatif.js`)
 
 분기 시드는 `asOf(fork)` 스냅샷뿐이고 **분기 시점 이후의 원문·사건은 프롬프트에 들어가지
@@ -252,7 +270,7 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 
 | 영역 | 내용 |
 | --- | --- |
-| Reader | 원문 입력·편집, segment 목록, 독서 위치 |
+| Reader | 원문 입력·편집, segment 목록, 독서 위치, 읽은 범위의 인물·장소 묘사 인용 |
 | 관계 지도 | 현재 segment의 인물·장소·사건 연결과 Inspector |
 | 사건 흐름 | 현재 범위까지의 사건 |
 | 인물 상태 | 상태 이력, 관계, 공간 궤적 |
@@ -281,11 +299,12 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 
 리소스는 `novel://{document_id}/analysis/{as_of}`와 `novel://{document_id}/segment/{n}`,
 프롬프트는 `spoiler-safe-question`과 `character-interview`다. 둘 다 현재 독서 위치를
-고정하고 근거 없는 추측을 금지한다.
+고정하고 근거 없는 추측을 금지한다. 분석 리소스의 각 segment에는 그 시점까지 보이는
+`description_spans`가 들어가며 별도 분석 규칙은 MCP에 없다.
 
 ## 12. 테스트 지도
 
-`npm test`는 Ollama·네트워크 없이 119건을 실행한다.
+`npm test`는 Ollama·네트워크 없이 130건을 실행한다.
 
 | 파일 | 무엇을 지키는가 |
 | --- | --- |
@@ -303,6 +322,7 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 | `module_wiring.test.mjs` | import 없이 호출하는 함수 없음 |
 | `asof_qa.test.mjs` | 시점 질의 평가셋 전체 통과와 누출 0 |
 | `annotations.test.mjs` | 주석 앵커 무결성, 자동 채널이 서술을 안 만듦, 링크 허용 호스트, 시점 가림 |
+| `descriptions.test.mjs` | 묘사 원문 offset, 주어 절 제한, 문서 비례 문턱, 이미지 비움, 시점 가림 |
 
 평가는 두 축이다. `npm run eval`은 골든셋 precision/recall,
 `npm run eval:qa`는 "그 시점에 답할 수 있는가 / 미래를 흘리지 않는가"를 잰다.

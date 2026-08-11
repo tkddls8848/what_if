@@ -19,6 +19,7 @@ import {
   LOCATION_SEEDS,
   EVENT_LEXICON,
   MENTAL_STATE_LEXICON,
+  VISUAL_DESCRIPTION_LEXICON,
   PHYSICAL_STATE_LEXICON,
   EVENT_LABELS,
   PERIOD_TERM_LEXICON,
@@ -85,6 +86,8 @@ const KOREAN_SURNAMES = new Set([
 const NARRATOR_PRONOUN_RE = /(^|[^가-힣])(내가|나를|나의|나에게|나한테|나와|나도)(?=[^가-힣]|$)/gu;
 const QUOTED_SPAN_RE = /"[^"]*"|[“”][^“”]*[“”]|'[^']*'|「[^」]*」|『[^』]*』/gu;
 const LOCATION_SUFFIX_RE = /(정거장|백화점|공동묘지|빈민굴|옥상|시장|골목|마당|학교|병원|도시|마을|바다|부엌|창고|가게|주막|다방|호텔|여관|묘지|거리|방|집|길|문|역|강|산|숲|밭|궁|성)$/u;
+const NAMED_LOCATION_HEAD_SUFFIXES = new Set(["성"]);
+const COMPOUND_LOCATION_ALIAS_SUFFIXES = new Set(["밭"]);
 const PERSON_ACTION_RE = /(말하|말했|대답|묻|물었|부르|불렀|가(?:고|서|며|려|았다|겠)|오(?:고|며|았다|겠)|나가|들어오|돌아오|걷|앉|일어나|웃|울|보(?:고|았|며)|먹|마시|주(?:고|었)|받|만나|생각하|느끼|죽|살|일하|잠들|깨)/u;
 const MOVEMENT_CONTEXT_RE = /(가(?:고|서|며|다가|았다)|오(?:고|며|다가|았다)|나가|들어오|돌아오|걷|건너|지나|따라|오르|내리|도착|떠나)/u;
 
@@ -190,6 +193,19 @@ function locationEvidence(name, suffix, particle, following) {
   if (["길", "문", "역", "방", "집"].includes(suffix)) return prefixLength >= 2;
   if (["강", "산", "숲", "밭", "궁", "성"].includes(suffix)) return false;
   return prefixLength >= 1;
+}
+
+function locationSeedMinimum(segmentCount) {
+  return segmentCount >= 20 ? { count: 2, segments: 2 } : { count: 1, segments: 1 };
+}
+
+function precedingLocationWord(text, start) {
+  return text.slice(Math.max(0, start - 16), start).match(/(?:^|[^가-힣])([가-힣]{2,8})\s$/u)?.[1] || "";
+}
+
+function isNamedLocationHead(name, suffix, following) {
+  return name === suffix && NAMED_LOCATION_HEAD_SUFFIXES.has(suffix) &&
+    /^\s*(?:안|밖)(?:에서|으로|에는|에도|에|의|은|는)?(?:\s|$)/u.test(following);
 }
 
 export function buildDynamicSeedLexicon(payload, model) {
@@ -953,6 +969,7 @@ export function analyzeNovel(input) {
   const locationPass = extractLocations(segments, document.sample_id, seedLexicon);
   const mentions = [...characterPass.mentions, ...locationPass.mentions];
   normalizeMentionReferences(characterPass.characters, locationPass.locations, mentions);
+  extractDescriptionSpans(segments, characterPass.characters, locationPass.locations);
   const dynamicLexicon = buildRuntimeLexicon(seedLexicon);
   const events = extractEvents(segments, characterPass.characters, locationPass.locations, document.document_id, dynamicLexicon);
   const analysis = {
@@ -1006,7 +1023,8 @@ export function analyzeNovel(input) {
     locations: analysis.locations.length,
     events: analysis.events.length,
     relations: analysis.relations.length,
-    annotations: analysis.annotations.length
+    annotations: analysis.annotations.length,
+    descriptions: segments.reduce((count, segment) => count + segment.description_spans.length, 0)
   };
 
   return analysis;
@@ -1094,27 +1112,92 @@ function buildDocumentCharacterSeeds(segments, method) {
 
 function buildDocumentLocationSeeds(segments, method) {
   const counts = new Map();
+  const namedHeads = new Map();
+  const compoundAliases = new Map();
+  const minimum = locationSeedMinimum(segments.length);
+
+  const itemFor = (name) => {
+    const item = counts.get(name) || { count: 0, particles: new Set(), segmentIds: new Set(), aliases: new Set([name]) };
+    counts.set(name, item);
+    return item;
+  };
+
   segments.forEach((segment) => {
     for (const match of segment.text.matchAll(/[가-힣A-Za-z0-9]+/gu)) {
       const { base: name, particle } = splitTrailingParticle(match[0], LOCATION_PARTICLES);
       const suffix = name.match(LOCATION_SUFFIX_RE)?.[1] || "";
       if (!suffix || name.length > 14) continue;
       const following = followingClause(segment.text, match.index + match[0].length);
+      const preceding = precedingLocationWord(segment.text, match.index);
+
+      // `평양 성 안으로`처럼 고유 지명이 generic 공간어 앞에서 띄어 쓰이면 토큰 스캔은
+      // `평양`과 `성`을 갈라 둘 다 버린다. 구조는 여기서 발견하되, 실제 표층형 횟수는
+      // 아래에서 aliasPattern()을 쓰는 mention 채널로 다시 세어 장문 문턱을 적용한다.
+      if (preceding && isNamedLocationHead(name, suffix, following)) {
+        const item = namedHeads.get(preceding) || { aliases: new Set([preceding]), structuralSegments: new Set() };
+        item.aliases.add(`${preceding} ${name}`);
+        item.structuralSegments.add(segment.segment_id);
+        namedHeads.set(preceding, item);
+      }
+
+      // 공백 때문에 `채마 밭`이 `밭`으로 잘리는 경우다. 장문에서는 같은 복합 표층형이
+      // 두 문단 이상 반복될 때만 alias로 승격하고, 짧은 입력에서는 한 번을 전부로 본다.
+      if (preceding && name === suffix && COMPOUND_LOCATION_ALIAS_SUFFIXES.has(suffix)) {
+        const aliases = compoundAliases.get(name) || new Map();
+        const alias = `${preceding} ${name}`;
+        const evidence = aliases.get(alias) || { count: 0, segmentIds: new Set() };
+        evidence.count += 1;
+        evidence.segmentIds.add(segment.segment_id);
+        aliases.set(alias, evidence);
+        compoundAliases.set(name, aliases);
+      }
+
       if (!locationEvidence(name, suffix, particle, following)) continue;
-      const item = counts.get(name) || { count: 0, particles: new Set(), segmentIds: new Set() };
+      const item = itemFor(name);
       item.count += 1;
       if (particle) item.particles.add(particle);
       item.segmentIds.add(segment.segment_id);
-      counts.set(name, item);
     }
   });
+
+  namedHeads.forEach((head, name) => {
+    const mentions = findSeedMentions(segments, [name], "location", "");
+    const segmentIds = new Set(mentions.map((mention) => mention.segment_id));
+    if (mentions.length < minimum.count || segmentIds.size < minimum.segments) return;
+    const item = itemFor(name);
+    item.count += mentions.length;
+    segmentIds.forEach((segmentId) => item.segmentIds.add(segmentId));
+    head.aliases.forEach((alias) => item.aliases.add(alias));
+  });
+
+  compoundAliases.forEach((aliases, name) => {
+    const item = counts.get(name);
+    if (!item) return;
+    aliases.forEach((evidence, alias) => {
+      if (evidence.count >= minimum.count && evidence.segmentIds.size >= minimum.segments) item.aliases.add(alias);
+    });
+  });
+
+  // `우리집`·`전주집`처럼 generic `집`과 같은 문서에서만 생긴 파생형은 별도 장소가
+  // 아니라 그 집의 표층 alias로 보존한다. compound만 있는 문서에서는 함부로 접지 않는다.
+  const genericHouse = counts.get("집");
+  if (genericHouse) {
+    [...counts.entries()].forEach(([name, item]) => {
+      if (name === "집" || !name.endsWith("집")) return;
+      genericHouse.count += item.count;
+      item.particles.forEach((particle) => genericHouse.particles.add(particle));
+      item.segmentIds.forEach((segmentId) => genericHouse.segmentIds.add(segmentId));
+      item.aliases.forEach((alias) => genericHouse.aliases.add(alias));
+      counts.delete(name);
+    });
+  }
 
   return Array.from(counts.entries())
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 14)
     .map(([name, item]) => ({
       name,
-      aliases: expandAliasCandidates([name, ...singleSyllableParticleForms(name)]),
+      aliases: expandAliasCandidates([...item.aliases, ...singleSyllableParticleForms(name)]),
       type: inferLocationTypeFromName(name),
       description: `장소 핵심 명사와 공간 문맥으로 생성한 장소 seed입니다. 감지 ${item.count}회.`,
       confidence: item.count > 1 ? 0.62 : 0.52,
@@ -1321,7 +1404,8 @@ function buildSegments(text, documentId) {
         scene_id: "",
         text: piece.text,
         char_start: charStart + piece.start,
-        char_end: charStart + piece.end
+        char_end: charStart + piece.end,
+        description_spans: []
       });
     });
     cursor = charStart + paragraph.length;
@@ -1577,6 +1661,156 @@ function findSeedMentions(segments, aliases, entityType, entityId) {
       });
   });
   return mentions.sort((a, b) => a.char_start - b.char_start);
+}
+
+const DESCRIPTION_SUBJECT_PARTICLES = {
+  character: new Set(["께서는", "께서", "은", "는", "이", "가"]),
+  location: new Set(["에서는", "에서도", "에는", "에도", "에서", "에", "은", "는", "이", "가"])
+};
+
+/** 문서가 길수록 우연한 한 단어보다 주어+묘사 근거가 함께 있어야 한다. */
+function descriptionEvidenceMinimum(segmentCount) {
+  return Math.min(2, Math.max(1, Math.ceil(Math.max(1, segmentCount) / 8)));
+}
+
+/** 쉼표·문장부호 경계를 보존한 원문 절과 단락 내부 offset. */
+function splitClauses(text) {
+  const clauses = [];
+  let start = 0;
+  for (const boundary of String(text || "").matchAll(/---+|[,;.!?。！？]+/gu)) {
+    const end = boundary.index + boundary[0].length;
+    const raw = text.slice(start, end);
+    const leading = raw.length - raw.trimStart().length;
+    const trailing = raw.length - raw.trimEnd().length;
+    if (raw.trim()) clauses.push({ text: raw.trim(), start: start + leading, end: end - trailing });
+    start = end;
+  }
+  const raw = text.slice(start);
+  const leading = raw.length - raw.trimStart().length;
+  const trailing = raw.length - raw.trimEnd().length;
+  if (raw.trim()) clauses.push({ text: raw.trim(), start: start + leading, end: text.length - trailing });
+  return clauses;
+}
+
+function descriptionAliases(entity, entityType, characters, locations) {
+  const aliases = unique(entity.aliases || []);
+  if (entityType !== "character") return aliases;
+  return aliases.filter((alias) => {
+    const namesAnotherCharacter = characters.some((candidate) =>
+      candidate.character_id !== entity.character_id &&
+      candidate.canonical_name &&
+      alias.includes(candidate.canonical_name));
+    const namesLocation = locations.some((location) => location.name === alias);
+    return !namesAnotherCharacter && !namesLocation;
+  });
+}
+
+function subjectTermPattern(entries) {
+  return unique(entries.flatMap((entry) => entry.subject_terms || []))
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join("|");
+}
+
+/**
+ * 별칭 자체는 반드시 `aliasRegex()`로 찾고, 여기서는 그 표층형이 절의 주어인지 판정한다.
+ * 소유격은 `복녀의 숙인 얼굴은`처럼 묘사 사전의 신체·공간 말이 주어일 때만 허용한다.
+ */
+function subjectAliasHit(clause, aliases, entityType, entries) {
+  const particles = DESCRIPTION_SUBJECT_PARTICLES[entityType];
+  const subjectTerms = subjectTermPattern(entries);
+  const hits = [];
+  unique(aliases).sort((a, b) => b.length - a.length).forEach((alias) => {
+    if (!alias || alias.length < 2) return;
+    for (const match of clause.matchAll(aliasRegex(alias, entityType, "gu"))) {
+      const suffix = match[0].slice(alias.length);
+      const aliasAlreadyInflected = [...particles].some((particle) => alias.endsWith(particle));
+      if (particles.has(suffix) || (!suffix && aliasAlreadyInflected)) {
+        const subjectParticle = suffix || [...particles].find((particle) => alias.endsWith(particle)) || "";
+        const strength = ["께서는", "께서", "은", "는", "이", "가"].includes(subjectParticle) ? 1 : 0;
+        hits.push({ index: match.index, alias, form: match[0], kind: "direct", strength });
+        continue;
+      }
+      if (suffix !== "의" || !subjectTerms) continue;
+      const following = clause.slice(match.index + match[0].length, match.index + match[0].length + 32);
+      const ownedSubject = new RegExp(`^(?:[^,;.!?。！？]{0,24})?(?:${subjectTerms})(?:에서는|에서도|에는|에도|은|는|이|가)`, "u");
+      if (ownedSubject.test(following)) hits.push({ index: match.index, alias, form: match[0], kind: "owned-subject", strength: 1 });
+    }
+  });
+  return hits.sort((a, b) => a.index - b.index || b.alias.length - a.alias.length)[0] || null;
+}
+
+/**
+ * 인물·장소가 주어인 절 중 외형·복식·공간 어휘가 실제로 있는 원문 span만 수집한다.
+ * 결과를 segment에 두므로 `asOf()`가 segment를 자를 때 미래 묘사도 함께 사라진다.
+ */
+function extractDescriptionSpans(segments, characters, locations) {
+  const targets = [
+    ...characters.map((entity) => ({ entity, entity_type: "character", entity_id: entity.character_id, entity_name: entity.canonical_name })),
+    ...locations.map((entity) => ({ entity, entity_type: "location", entity_id: entity.location_id, entity_name: entity.name }))
+  ];
+  const minimum = descriptionEvidenceMinimum(segments.length);
+  let descriptionIndex = 0;
+
+  segments.forEach((segment) => {
+    const spans = [];
+    splitClauses(segment.text).forEach((clause) => {
+      const candidates = targets.map((target) => {
+        const entries = VISUAL_DESCRIPTION_LEXICON.filter((entry) => entry.entity_types.includes(target.entity_type));
+        const aliases = descriptionAliases(target.entity, target.entity_type, characters, locations);
+        const subject = subjectAliasHit(clause.text, aliases, target.entity_type, entries);
+        return subject ? { target, entries, subject } : null;
+      }).filter(Boolean);
+      const lastDirectCharacterSubject = Math.max(-1, ...candidates
+        .filter((candidate) => candidate.target.entity_type === "character" && candidate.subject.kind === "direct")
+        .map((candidate) => candidate.subject.index));
+
+      candidates.forEach(({ target, entries, subject }) => {
+        if (target.entity_type === "character" && subject.kind === "direct" && subject.index < lastDirectCharacterSubject) return;
+        const subjectEnd = subject.index + subject.form.length;
+        const afterSubject = clause.text.slice(subjectEnd);
+        const beforeSubject = clause.text.slice(Math.max(0, subject.index - 24), subject.index);
+
+        const matched = entries
+          .map((entry) => ({
+            category: entry.category,
+            terms: unique(entry.words.filter((word) => {
+              if (!word || !clause.text.includes(word)) return false;
+              if (subject.kind === "owned-subject") return afterSubject.includes(word);
+              if (entry.category === "appearance") return afterSubject.includes(word);
+              if (entry.category === "space") return afterSubject.includes(word) || beforeSubject.includes(word);
+              const wearsClothing = ["입", "걸치", "벗", "쓰는", "쓰고"].some((verb) => afterSubject.includes(verb));
+              return wearsClothing && afterSubject.includes(word) || word === "매무새" && beforeSubject.includes(word);
+            }))
+          }))
+          .filter((entry) => entry.terms.length);
+        const matchedTerms = unique(matched.flatMap((entry) => entry.terms));
+        const evidenceScore = subject.strength + matchedTerms.length;
+        if (!matched.length || evidenceScore < minimum) return;
+
+        spans.push({
+          description_id: makeId("desc", descriptionIndex),
+          entity_type: target.entity_type,
+          entity_id: target.entity_id,
+          entity_name: target.entity_name,
+          subject_text: subject.form,
+          subject_kind: subject.kind,
+          categories: matched.map((entry) => entry.category),
+          matched_terms: matchedTerms,
+          segment_id: segment.segment_id,
+          text: clause.text,
+          char_start: segment.char_start + clause.start,
+          char_end: segment.char_start + clause.end,
+          image: null,
+          status: STATUS.SUGGESTED,
+          confidence: Math.min(0.94, 0.72 + evidenceScore * 0.04),
+          method: "subject-description-lexicon"
+        });
+        descriptionIndex += 1;
+      });
+    });
+    segment.description_spans = spans.sort((a, b) => a.char_start - b.char_start || a.entity_id.localeCompare(b.entity_id));
+  });
 }
 
 function extractEvents(segments, characters, locations, documentId, dynamicLexicon = buildRuntimeLexicon(null)) {

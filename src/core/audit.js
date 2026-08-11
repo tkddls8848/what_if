@@ -15,13 +15,18 @@
  *
  * BOUNDARY NOTE: DOM·전역 상태 의존 없음. `core/asof.js`에만 의존한다.
  */
-import { STATUS } from "../config.js";
+import { EVENT_LEXICON, STATUS } from "../config.js";
 import { intervalOf, segmentIndexOf } from "./asof.js";
 
 /** 부정 종결·부정 보조용언. 한국어 부정은 문말에 오므로 span 내부 검사로 충분하지 않을 수 있다. */
-const NEGATION_RE = /(지\s*않|지\s*못하|지\s*아니|하지\s*마|없었|없다|없으|없이|아니었|아니다|아닌|못했|못한|안\s)/u;
+const NEGATION_RE = /(지\s*않|지\s*못하|지\s*아니|하지\s*마|없었|없다|없으|없이|아니었|아니다|아닌|못했|못한|안\s)/gu;
 /** 부정문에서 추출되면 의심스러운 "실제로 일어난 행동" 유형. */
 const POSITIVE_ACTION_TYPES = new Set(["movement", "conversation", "conflict", "appearance"]);
+/** 계측상 직접 부정된 사건 단서가 모인 최대 문자 거리. */
+const MAX_POLARITY_DISTANCE = 6;
+/** 사건 단서와 부정 표현 사이에 있으면 서로 다른 절로 판정하는 경계. */
+const CLAUSE_BOUNDARY_RE = /[,;:!?]|---+|…+|(?:지만|으나|는데|더니|면서|므로|다가|도록|고도?|며|면)(?:\s|$)/u;
+const EVENT_WORDS_BY_TYPE = new Map(EVENT_LEXICON.map((entry) => [entry.type, entry.words]));
 
 const ACTIVE = (item) => item?.status !== STATUS.REJECTED;
 
@@ -152,16 +157,47 @@ function auditPolarity(analysis) {
     .filter((event) => POSITIVE_ACTION_TYPES.has(event.type))
     .flatMap((event) => {
       const text = spanText(segmentById.get(event.segment_id), event.source_span);
-      if (!text || !NEGATION_RE.test(text)) return [];
+      if (!text || !polarityEvidencePair(text, event.type)) return [];
       return [violation({
         code: "polarity",
         severity: "warn",
         target_type: "event",
         target_id: event.event_id,
         segment_index: segmentIndexOf(analysis, event.segment_id),
-        message: "부정 표현이 있는 문장에서 실제 행동 사건을 추출했습니다. 반대 의미인지 확인이 필요합니다."
+        message: "사건 단서와 가까운 같은 절에 부정 표현이 있습니다. 실제 행동의 반대 의미인지 확인이 필요합니다."
       })];
     });
+}
+
+function polarityEvidencePair(text, eventType) {
+  const eventSpans = literalSpans(text, EVENT_WORDS_BY_TYPE.get(eventType) || []);
+  const negationSpans = [...text.matchAll(NEGATION_RE)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length
+  }));
+
+  return eventSpans
+    .flatMap((eventSpan) => negationSpans.map((negationSpan) => {
+      const left = eventSpan.start <= negationSpan.start ? eventSpan : negationSpan;
+      const right = left === eventSpan ? negationSpan : eventSpan;
+      return {
+        distance: Math.max(0, right.start - left.end),
+        between: text.slice(left.end, right.start)
+      };
+    }))
+    .find((pair) => pair.distance <= MAX_POLARITY_DISTANCE && !CLAUSE_BOUNDARY_RE.test(pair.between));
+}
+
+function literalSpans(text, words) {
+  return words.flatMap((word) => {
+    const spans = [];
+    let start = text.indexOf(word);
+    while (start >= 0) {
+      spans.push({ start, end: start + word.length });
+      start = text.indexOf(word, start + 1);
+    }
+    return spans;
+  });
 }
 
 /* ------------------------------------------------------------------ */

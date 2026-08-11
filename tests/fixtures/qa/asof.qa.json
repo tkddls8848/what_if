@@ -1,5 +1,5 @@
 {
-  "note": "as-of 질의 평가셋. 각 항목은 '그 시점까지의 근거만으로 답할 수 있는가'와 '미래를 누출하지 않는가'를 검사한다. 정답은 원문을 읽고 사람이 확정했으며, 모델 출력을 정답으로 넣지 않는다. 괄호 안 첫 등장 단락은 현재 규칙 채널 기준이므로 추출 규칙이 바뀌면 원문으로 재확인하고 함께 갱신한다. 2026-08-09 조사 결합형 mention 수정으로 아내 방 90→23, 채마 밭 102→69, 왕 서방의 집 82→75로 앞당겨졌다.",
+  "note": "as-of 질의 평가셋. 각 항목은 '그 시점까지의 근거만으로 답할 수 있는가'와 '미래를 누출하지 않는가'를 검사한다. 정답과 ground_truth는 texts/gamja.txt·texts/wings.txt를 직접 읽고 사람이 확정했으며, 모델·분석기 출력을 정답으로 넣지 않는다. ground_truth의 first_revealed_segment는 해당 사실이 원문에서 처음 드러나는 단락이고 quote는 그 단락의 실제 조각이다.",
   "cases": [
     {
       "id": "gamja-bokneyo-early",
@@ -8,7 +8,10 @@
       "ask": "who_is",
       "args": { "name": "복녀" },
       "expect": "answerable",
-      "reason": "복녀는 1번 단락부터 등장한다."
+      "reason": "복녀는 1번 단락부터 등장한다.",
+      "ground_truth": [
+        { "fact": "복녀의 등장", "first_revealed_segment": 1, "quote": "복녀의 부처는" }
+      ]
     },
     {
       "id": "gamja-wang-too-early",
@@ -17,7 +20,10 @@
       "ask": "who_is",
       "args": { "name": "왕 서방" },
       "expect": "refused",
-      "reason": "왕 서방은 72번 단락에서야 등장한다. 40번까지 읽은 독자에게 답하면 스포일러다."
+      "reason": "왕 서방은 원문 70번 단락에서 처음 드러난다. 40번까지 읽은 독자에게 답하면 스포일러다.",
+      "ground_truth": [
+        { "fact": "왕 서방의 등장", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" }
+      ]
     },
     {
       "id": "gamja-wang-after",
@@ -26,7 +32,10 @@
       "ask": "who_is",
       "args": { "name": "왕 서방" },
       "expect": "answerable",
-      "reason": "72번 단락 이후에는 답할 수 있다."
+      "reason": "원문 70번 단락 이후에는 왕 서방을 답할 수 있다.",
+      "ground_truth": [
+        { "fact": "왕 서방의 등장", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" }
+      ]
     },
     {
       "id": "gamja-husband-mid",
@@ -35,7 +44,11 @@
       "ask": "state_as_of",
       "args": { "character": "복녀" },
       "expect": "answerable",
-      "reason": "복녀의 상태 레코드가 이 시점 이전에 존재한다."
+      "reason": "복녀는 1번 단락, 남편과의 혼인은 3번 단락에서 드러나므로 10번 시점의 상태를 답할 수 있다.",
+      "ground_truth": [
+        { "fact": "복녀의 등장", "first_revealed_segment": 1, "quote": "복녀의 부처는" },
+        { "fact": "복녀의 남편", "first_revealed_segment": 3, "quote": "그의 새서방" }
+      ]
     },
     {
       "id": "gamja-timeline-mid",
@@ -44,7 +57,10 @@
       "ask": "timeline_as_of",
       "args": {},
       "expect": "answerable",
-      "reason": "30번 단락까지의 사건만 나와야 한다."
+      "reason": "원문은 1번 단락부터 사건과 장소를 제시하며, 응답은 30번 단락까지의 사건만 포함해야 한다.",
+      "ground_truth": [
+        { "fact": "서사의 첫 사건·장소", "first_revealed_segment": 1, "quote": "칠성문 밖 빈민굴" }
+      ]
     },
     {
       "id": "gamja-graph-mid",
@@ -53,7 +69,11 @@
       "ask": "graph_as_of",
       "args": {},
       "expect": "answerable",
-      "reason": "60번 단락 시점 그래프에 왕 서방 노드가 있으면 누출이다."
+      "forbidden_labels": ["왕 서방"],
+      "reason": "왕 서방은 원문 70번 단락에서 처음 드러나므로 60번 시점 그래프에 있으면 누출이다.",
+      "ground_truth": [
+        { "fact": "왕 서방의 등장", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" }
+      ]
     },
     {
       "id": "wings-wife-too-early",
@@ -62,7 +82,10 @@
       "ask": "who_is",
       "args": { "name": "아내" },
       "expect": "refused",
-      "reason": "아내는 18번 단락에서 처음 확인된다."
+      "reason": "아내는 원문 18번 단락에서 처음 확인된다.",
+      "ground_truth": [
+        { "fact": "아내의 등장", "first_revealed_segment": 18, "quote": "내 아내의 명함" }
+      ]
     },
     {
       "id": "wings-wife-after",
@@ -71,7 +94,10 @@
       "ask": "state_as_of",
       "args": { "character": "아내" },
       "expect": "answerable",
-      "reason": "18번 단락 이후에는 상태를 답할 수 있다."
+      "reason": "아내는 원문 18번 단락에서 확인되므로 40번 시점에는 상태를 답할 수 있다.",
+      "ground_truth": [
+        { "fact": "아내의 등장", "first_revealed_segment": 18, "quote": "내 아내의 명함" }
+      ]
     },
     {
       "id": "wings-narrator",
@@ -80,7 +106,10 @@
       "ask": "who_is",
       "args": { "name": "나" },
       "expect": "answerable",
-      "reason": "화자는 2번 단락부터 확인된다."
+      "reason": "화자는 원문 2번 단락부터 확인된다.",
+      "ground_truth": [
+        { "fact": "1인칭 화자의 등장", "first_revealed_segment": 2, "quote": "나는 유쾌하오" }
+      ]
     },
     {
       "id": "wings-station-not-yet",
@@ -90,7 +119,12 @@
       "args": {},
       "expect": "answerable",
       "forbidden_labels": ["경성역", "미쓰코시 옥상", "남자"],
-      "reason": "경성역(100), 미쓰코시 옥상(154), 남자(72)는 이 시점에 아직 나오지 않았다. 아내 방은 23번 단락의 '아랫방은 그래도 해가 든다'로 이미 확인되므로 금지 목록이 아니다."
+      "reason": "경성역(100), 남자(72), 미쓰꼬시 옥상(154)은 원문에서 이 시점 뒤에 처음 나온다. 아내 방은 23번 단락에서 이미 확인되므로 금지 목록이 아니다.",
+      "ground_truth": [
+        { "fact": "경성역", "first_revealed_segment": 100, "quote": "경성역(京城驛) 시계" },
+        { "fact": "남자", "first_revealed_segment": 72, "quote": "낯설은 남자의 얼굴" },
+        { "fact": "미쓰코시 옥상", "first_revealed_segment": 154, "quote": "미쓰꼬시 옥상" }
+      ]
     },
     {
       "id": "gamja-grave-not-yet",
@@ -100,7 +134,10 @@
       "args": {},
       "expect": "answerable",
       "forbidden_labels": ["공동묘지"],
-      "reason": "공동묘지는 120번 단락('무덤으로 못 갔다')에서 처음 나온다. 결말을 미리 알려주는 항목이다."
+      "reason": "공동묘지는 원문 122번 단락에서 처음 명시된다. 결말을 미리 알려주는 항목이다.",
+      "ground_truth": [
+        { "fact": "공동묘지", "first_revealed_segment": 122, "quote": "공동묘지로 가져갔다" }
+      ]
     },
     {
       "id": "gamja-forbidden-late-location",
@@ -110,7 +147,12 @@
       "args": {},
       "expect": "answerable",
       "forbidden_labels": ["왕 서방", "왕 서방의 집", "채마 밭"],
-      "reason": "72·82·102번 단락에서 처음 나오는 항목들이다."
+      "reason": "채마 밭(69), 왕 서방(70), 왕 서방의 집(75)은 원문에서 60번 단락 뒤에 처음 나온다.",
+      "ground_truth": [
+        { "fact": "채마 밭", "first_revealed_segment": 69, "quote": "중국인의 채마 밭" },
+        { "fact": "왕 서방", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" },
+        { "fact": "왕 서방의 집", "first_revealed_segment": 75, "quote": "왕 서방의 집에서" }
+      ]
     },
     {
       "id": "gamja-whatif-seed-mid",
@@ -120,7 +162,154 @@
       "args": {},
       "expect": "answerable",
       "forbidden_labels": ["왕 서방"],
-      "reason": "분기 시드에 아직 등장하지 않은 인물이 들어가면 분기가 원작을 미리 안 것이 된다."
+      "reason": "왕 서방은 원문 70번 단락에서 처음 드러난다. 40번 분기 시드에 들어가면 원작을 미리 안 것이 된다.",
+      "ground_truth": [
+        { "fact": "왕 서방의 등장", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" }
+      ]
+    },
+    {
+      "id": "gamja-husband-too-early",
+      "document_id": "gamja",
+      "as_of": 2,
+      "ask": "who_is",
+      "args": { "name": "남편" },
+      "expect": "refused",
+      "reason": "복녀가 혼인한 남편은 원문 3번 단락의 새서방에서 처음 드러난다.",
+      "ground_truth": [
+        { "fact": "복녀의 남편", "first_revealed_segment": 3, "quote": "그의 새서방" }
+      ]
+    },
+    {
+      "id": "gamja-director-too-early",
+      "document_id": "gamja",
+      "as_of": 25,
+      "ask": "who_is",
+      "args": { "name": "감독" },
+      "expect": "refused",
+      "reason": "송충이 잡는 일의 감독은 원문 26번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "감독의 등장", "first_revealed_segment": 26, "quote": "감독은 한 사람뿐" }
+      ]
+    },
+    {
+      "id": "gamja-wang-boundary-before",
+      "document_id": "gamja",
+      "as_of": 69,
+      "ask": "who_is",
+      "args": { "name": "왕 서방" },
+      "expect": "refused",
+      "reason": "채마 밭은 69번 단락에 나오지만 그 주인이 왕 서방이라는 사실은 70번 단락에서 처음 드러난다.",
+      "ground_truth": [
+        { "fact": "왕 서방의 등장", "first_revealed_segment": 70, "quote": "그 밭의 주인인 중국인 왕 서방이었었다" }
+      ]
+    },
+    {
+      "id": "wings-narrator-too-early",
+      "document_id": "wings",
+      "as_of": 1,
+      "ask": "who_is",
+      "args": { "name": "나" },
+      "expect": "refused",
+      "reason": "1번 단락은 제목뿐이고 1인칭 화자는 원문 2번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "1인칭 화자의 등장", "first_revealed_segment": 2, "quote": "나는 유쾌하오" }
+      ]
+    },
+    {
+      "id": "wings-residents-too-early",
+      "document_id": "wings",
+      "as_of": 13,
+      "ask": "who_is",
+      "args": { "name": "18가구 사람들" },
+      "expect": "refused",
+      "reason": "33번지의 18가구 사람들은 원문 14번 단락에서 처음 제시된다.",
+      "ground_truth": [
+        { "fact": "18가구 사람들", "first_revealed_segment": 14, "quote": "한 번지에 18가구" }
+      ]
+    },
+    {
+      "id": "wings-wife-boundary-before",
+      "document_id": "wings",
+      "as_of": 17,
+      "ask": "who_is",
+      "args": { "name": "아내" },
+      "expect": "refused",
+      "reason": "아내는 원문 18번 단락에서 처음 확인되므로 직전 단락에서는 답할 수 없다.",
+      "ground_truth": [
+        { "fact": "아내의 등장", "first_revealed_segment": 18, "quote": "내 아내의 명함" }
+      ]
+    },
+    {
+      "id": "wings-visitor-too-early",
+      "document_id": "wings",
+      "as_of": 39,
+      "ask": "who_is",
+      "args": { "name": "내객" },
+      "expect": "refused",
+      "reason": "아내의 내객은 원문 40번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "내객의 등장", "first_revealed_segment": 40, "quote": "내객이 많다" }
+      ]
+    },
+    {
+      "id": "wings-man-too-early",
+      "document_id": "wings",
+      "as_of": 71,
+      "ask": "who_is",
+      "args": { "name": "남자" },
+      "expect": "refused",
+      "reason": "아내 방의 낯선 남자는 원문 72번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "남자의 등장", "first_revealed_segment": 72, "quote": "낯설은 남자의 얼굴" }
+      ]
+    },
+    {
+      "id": "gamja-husband-after",
+      "document_id": "gamja",
+      "as_of": 3,
+      "ask": "who_is",
+      "args": { "name": "남편" },
+      "expect": "answerable",
+      "reason": "복녀가 혼인한 새서방은 원문 3번 단락에서 처음 드러난다.",
+      "ground_truth": [
+        { "fact": "복녀의 남편", "first_revealed_segment": 3, "quote": "그의 새서방" }
+      ]
+    },
+    {
+      "id": "gamja-director-after",
+      "document_id": "gamja",
+      "as_of": 26,
+      "ask": "who_is",
+      "args": { "name": "감독" },
+      "expect": "answerable",
+      "reason": "송충이 잡는 일의 감독은 원문 26번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "감독의 등장", "first_revealed_segment": 26, "quote": "감독은 한 사람뿐" }
+      ]
+    },
+    {
+      "id": "wings-visitor-after",
+      "document_id": "wings",
+      "as_of": 40,
+      "ask": "who_is",
+      "args": { "name": "내객" },
+      "expect": "answerable",
+      "reason": "아내의 내객은 원문 40번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "내객의 등장", "first_revealed_segment": 40, "quote": "내객이 많다" }
+      ]
+    },
+    {
+      "id": "wings-man-after",
+      "document_id": "wings",
+      "as_of": 72,
+      "ask": "who_is",
+      "args": { "name": "남자" },
+      "expect": "answerable",
+      "reason": "아내 방의 낯선 남자는 원문 72번 단락에서 처음 등장한다.",
+      "ground_truth": [
+        { "fact": "남자의 등장", "first_revealed_segment": 72, "quote": "낯설은 남자의 얼굴" }
+      ]
     }
   ]
 }

@@ -59,10 +59,55 @@ export function renderReview() {
         <span>${item.method || "manual"}</span>
       </div>
       ${renderViolations(violations)}
+      ${kind === "character" ? renderCharacterMergeControls(item) : ""}
       <div class="button-row">${statusButtons(kind, id)}</div>
     `;
     els.reviewList.appendChild(row);
   });
+}
+
+function renderCharacterMergeControls(character) {
+  const analysis = state.analysis;
+  if (character.merge_record) {
+    const target = analysis.characters.find((item) => item.character_id === character.merge_record.target_id);
+    return `
+      <div class="character-merge-controls">
+        <span><strong>${escapeHtml(character.canonical_name)}</strong> → ${escapeHtml(target?.canonical_name || character.merge_record.target_id)}</span>
+        <button type="button" data-split-character="${escapeAttr(character.character_id)}">분리</button>
+      </div>
+    `;
+  }
+
+  const mergedSources = analysis.characters.filter((item) => item.merge_record?.target_id === character.character_id);
+  const splitButtons = mergedSources.map((source) => `
+    <button type="button" data-split-character="${escapeAttr(source.character_id)}">${escapeHtml(source.canonical_name)} 분리</button>
+  `).join("");
+  if (mergedSources.length) {
+    return `
+      <div class="character-merge-controls">
+        <span>합친 인물</span>
+        <div class="button-row">${splitButtons}</div>
+        <small>이 인물을 다시 병합하려면 먼저 합친 인물을 분리하세요.</small>
+      </div>
+    `;
+  }
+
+  const targets = analysis.characters
+    .filter((item) => item.character_id !== character.character_id)
+    .filter((item) => item.status !== STATUS.REJECTED && !item.merge_record)
+    .filter((item) => isVisibleSegmentId(item.first_segment_id));
+  return `
+    <div class="character-merge-controls">
+      <label>
+        병합 대상
+        <select data-merge-target="${escapeAttr(character.character_id)}" ${targets.length ? "" : "disabled"}>
+          ${targets.map((target) => `<option value="${escapeAttr(target.character_id)}">${escapeHtml(target.canonical_name)}</option>`).join("") || `<option>대상 없음</option>`}
+        </select>
+      </label>
+      <button type="button" data-merge-character="${escapeAttr(character.character_id)}" ${targets.length ? "" : "disabled"}>선택 인물로 병합</button>
+      <small>자동 병합하지 않습니다. 원문을 확인한 사람이 직접 확정합니다.</small>
+    </div>
+  `;
 }
 
 const VIOLATION_LABELS = {

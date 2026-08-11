@@ -60,6 +60,24 @@ test("does not create sentence fragments when a bundled sample is loaded as exte
   );
 });
 
+test("dynamic locations recover spaced proper names and merge generic fragments as aliases", () => {
+  const analysis = analyzeExternal(fs.readFileSync(new URL("../texts/gamja.txt", import.meta.url), "utf8"));
+  const locations = analysis.locations.map((item) => item.name);
+
+  // 변경 전 스냅샷: 집 · 칠성문 · 빈민굴 · 우리집 · 전주집 · 솔밭 · 밭 · 길 · 공동묘지
+  assert.deepEqual(locations, ["집", "칠성문", "평양", "빈민굴", "솔밭", "밭", "길", "공동묘지"]);
+  assert.ok(mentionTexts(analysis, "location", "평양").some((text) => text.startsWith("평양 성")));
+  assert.ok(mentionTexts(analysis, "location", "집").includes("우리집에"));
+  assert.ok(mentionTexts(analysis, "location", "집").includes("우리집으로"));
+  assert.ok(mentionTexts(analysis, "location", "집").includes("전주집에는"));
+  assert.ok(mentionTexts(analysis, "location", "밭").some((text) => text.startsWith("채마 밭")));
+});
+
+test("a one-segment proper location survives the document-relative seed threshold", () => {
+  const short = analyzeExternal("복녀는 평양 성 안으로 들어왔다.");
+  assert.ok(short.locations.some((location) => location.name === "평양"));
+});
+
 test("a surname separated by a space stays attached to its title", () => {
   // 토큰이 `[가-힣]+`이라 공백을 넘지 못한다. 되붙이지 않으면 「감자」의 필수 인물
   // `왕 서방`이 통째로 빠지고, 사람을 가르지 못하는 칭호 `서방`이 대신 인물이 된다.

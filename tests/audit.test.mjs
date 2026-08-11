@@ -66,6 +66,33 @@ test("flags a positive action extracted from a negated sentence (polarity)", () 
   assert.ok(polarity.every((violation) => violation.segment_index === 1), "부정문이 있는 첫 단락만 걸려야 한다");
 });
 
+test("limits polarity warnings to a nearby negation in the same clause", () => {
+  const cases = [
+    ["복녀는 아무 말도 하지 않았다.", true],
+    ["복녀는 이야기하는 법이 없었다.", true],
+    ["복녀는 불평이 없었지만, 칠성문 밖으로 나갔다.", false],
+    ["복녀는 손을 대지 않고 말았다.", false],
+    ["복녀는 오늘 밥을 먹지 않았다.", false]
+  ];
+
+  cases.forEach(([text, expected]) => {
+    const analysis = analyzeNovel({ text, title: "polarity scope", sample: { id: "custom" } });
+    const found = analysis.diagnostics.audit.violations.some((violation) => violation.code === "polarity");
+    assert.equal(found, expected, text);
+  });
+});
+
+test("bundled works keep only measured close-scope polarity warnings", () => {
+  const gamja = analyzeSample();
+  const wingsText = fs.readFileSync(new URL("../texts/wings.txt", import.meta.url), "utf8");
+  const wings = analyzeNovel({ text: wingsText, title: "날개", sample: { id: "wings" } });
+
+  assert.equal(gamja.diagnostics.audit.counts.polarity, 1);
+  assert.equal(wings.diagnostics.audit.counts.polarity, 15);
+  assert.equal(gamja.diagnostics.audit.counts.error, 0);
+  assert.equal(wings.diagnostics.audit.counts.error, 0);
+});
+
 test("detects a location that has not appeared yet (state)", () => {
   const analysis = analyzeSample();
   const state = analysis.states.find((item) => item.location_id);

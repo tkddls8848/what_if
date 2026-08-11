@@ -258,6 +258,44 @@ export const MENTAL_STATE_LEXICON = [
   { state: "욕망", words: ["원", "바라", "탐", "사랑", "그리", "기대"] }
 ];
 
+export const VISUAL_DESCRIPTION_CATEGORIES = {
+  appearance: "외형",
+  clothing: "복식",
+  space: "공간"
+};
+
+/**
+ * 원문 묘사 절을 찾는 어휘 사전.
+ *
+ * `words`는 묘사 근거, `subject_terms`는 `복녀의 얼굴은`처럼 인물·장소가 소유격으로
+ * 걸린 주어구를 확인할 때만 쓴다. 이 사전은 문장을 생성하지 않는다. 수집 결과는 항상
+ * 원문의 절과 offset이며, 이미지 채널은 별도 검토 전까지 비워 둔다.
+ */
+export const VISUAL_DESCRIPTION_LEXICON = [
+  {
+    category: "appearance",
+    entity_types: ["character"],
+    words: [
+      "아름답", "이뻐", "예쁘", "빤빤", "발갛", "빨갛", "하얗", "창백",
+      "근심스러운", "노기", "웃음", "미소", "애수", "방그레", "찬란하였다",
+      "작고", "크고", "길다란", "얇은", "살이었", "체취"
+    ],
+    subject_terms: ["얼굴", "눈", "눈초리", "입술", "머리", "수염", "몸", "몸뚱이", "동체", "피부", "표정", "웃음", "미소", "체취", "나이"]
+  },
+  {
+    category: "clothing",
+    entity_types: ["character"],
+    words: ["옷을", "옷이", "옷은", "옷도", "옷과", "치마", "저고리", "양복", "스웨터", "내의다", "내의를", "내의는", "내의가", "고무신", "모자", "사루마다", "차림", "매무새", "입는다", "입고", "걸치", "벗어", "분이 하얗"],
+    subject_terms: ["옷", "치마", "저고리", "양복", "스웨터", "내의", "고무신", "모자", "매무새", "차림", "화장"]
+  },
+  {
+    category: "space",
+    entity_types: ["location"],
+    words: ["침침", "서늘", "따뜻", "밝", "볕", "해가", "화려", "소박", "벽", "천장", "바닥", "못이", "걸렸", "나뉘", "칸", "들창", "창", "기온", "체온", "아늑", "좁", "넓", "외따로", "일각", "지붕", "공기", "축축", "가지런히", "빛나", "무늬"],
+    subject_terms: ["방", "기온", "벽", "천장", "바닥", "창", "들창", "문", "대문", "미닫이", "장지", "볕", "해", "지붕", "공기", "칸", "무늬"]
+  }
+];
+
 export const PHYSICAL_STATE_LEXICON = [
   { state: "누워 있거나 잠든 상태", words: ["잠", "눕", "이불", "낮잠", "자고", "잔다", "졸"] },
   { state: "이동 중", words: ["외출", "나가", "돌아오", "걸", "뛰", "올라", "내려", "찾아", "떠나", "도착"] },
@@ -315,7 +353,7 @@ export const PERIOD_TERM_LEXICON = [
   { term: "유곽", aliases: ["유곽"], category: "class_reproduction", era: "일제강점기", references: [KO_WIKI("유곽")] },
   { term: "다방", aliases: ["다방", "끽다점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("다방")] },
 
-  // ── plan.md의 나머지 작품을 넣을 때를 위한 seed ────────────────────────
+  // ── doc_nextsession/README.md 제품 방향의 나머지 작품을 넣을 때를 위한 seed ──
   { term: "화신상회", aliases: ["화신상회", "화신백화점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("화신백화점")] },
   { term: "인력거", aliases: ["인력거", "인력거꾼"], category: "erasure", era: "일제강점기", references: [KO_WIKI("인력거")] },
   { term: "전당포", aliases: ["전당포"], category: "money", era: "일제강점기", references: [KO_WIKI("전당포")] },

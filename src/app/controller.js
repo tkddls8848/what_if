@@ -29,7 +29,7 @@ import {
   handleWhatIfAction,
   handleRubricInput
 } from "./views.js";
-import { addManualEvent, setAnnotationStatus, editEntity } from "./editing.js";
+import { addManualEvent, setAnnotationStatus, editEntity, mergeCharacter, splitCharacter } from "./editing.js";
 import {
   activateTab,
   detectTitle,
@@ -214,6 +214,19 @@ function bindEvents() {
     const tab = event.target.closest("[data-tab]");
     if (tab) {
       activateTab(tab.dataset.tab);
+      return;
+    }
+
+    const mergeButton = event.target.closest("[data-merge-character]");
+    if (mergeButton) {
+      const targetSelect = mergeButton.closest(".character-merge-controls")?.querySelector("[data-merge-target]");
+      if (targetSelect?.value) mergeCharacter(mergeButton.dataset.mergeCharacter, targetSelect.value);
+      return;
+    }
+
+    const splitButton = event.target.closest("[data-split-character]");
+    if (splitButton) {
+      splitCharacter(splitButton.dataset.splitCharacter);
       return;
     }
 
