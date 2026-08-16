@@ -348,3 +348,40 @@ test("runScenePipeline: 배열이어야 할 자리에 다른 값이 와도 죽�
   assert.ok(result.error, "결과가 비면 구조화 오류여야 한다");
   assert.equal(result.error.error_code, "EMPTY_RESULT");
 });
+
+test("runScenePipeline: 요청이 취소되면 남은 장면을 돌리지 않는다", async () => {
+  // 상세 분석은 장면당 두 번 호출한다. 화면을 닫은 사용자를 위해 끝까지 돌리면
+  // Ollama가 그만큼 묶인다. 결과는 error여야 호출부가 부분 결과를 캐시하지 않는다.
+  const controller = new AbortController();
+  const client = scriptedClient((args, index) => {
+    if (index >= 2) controller.abort();
+    if (args.prompt.includes("인물과 장소만 추출")) {
+      return { ok: true, data: { characters: [{ name: "복녀", evidence: "복녀는 가난한 집에서" }], locations: [] } };
+    }
+    return { ok: true, data: { event_frames: [], state_changes: [] } };
+  });
+
+  const scenes = splitScenes(MINI_NOVEL, { targetChars: 60 });
+  assert.ok(scenes.length >= 2, "중단을 관찰하려면 장면이 여러 개여야 한다");
+
+  const result = await runScenePipeline({
+    text: MINI_NOVEL, model: "m4b", client, targetChars: 60, signal: controller.signal
+  });
+
+  assert.ok(result.error, "취소는 구조화 오류로 보고해야 한다");
+  assert.equal(result.error.error_code, "ABORTED");
+  assert.equal(result.diagnostics.aborted, true);
+  assert.ok(client.calls < scenes.length * 2, `취소 후에도 ${client.calls}회 호출했다`);
+});
+
+test("runScenePipeline: signal이 없으면 기존대로 끝까지 실행한다", async () => {
+  const client = scriptedClient((args) => {
+    if (args.prompt.includes("인물과 장소만 추출")) {
+      return { ok: true, data: { characters: [{ name: "복녀", evidence: "복녀는 가난한 집에서" }], locations: [] } };
+    }
+    return { ok: true, data: { event_frames: [], state_changes: [] } };
+  });
+  const result = await runScenePipeline({ text: MINI_NOVEL, model: "m4b", client, targetChars: 60 });
+  assert.ok(result.payload, "취소 신호가 없으면 정상 완료해야 한다");
+  assert.equal(result.diagnostics.aborted, undefined);
+});

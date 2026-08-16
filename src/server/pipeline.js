@@ -292,7 +292,8 @@ async function runScenePipeline({
   client,
   numCtx = prompts.NUM_CTX,
   targetChars = DEFAULT_TARGET_CHARS,
-  onProgress = () => {}
+  onProgress = () => {},
+  signal
 } = {}) {
   const scenes = splitScenes(text, { targetChars });
   const regexAgreement = regexCandidateNames(text);
@@ -328,7 +329,19 @@ async function runScenePipeline({
       .filter((item) => item.scene_count >= 2 || regexAgreement.characters.has(item.name))
       .map((item) => ({ name: item.name, aliases: item.aliases }));
 
+  // 요청자가 사라졌는데 남은 장면을 계속 돌리면 Ollama만 붙잡는다. 진행 중인
+  // 호출은 끝나게 두고, 다음 호출로 넘어가지 않는 지점마다 확인한다.
+  const aborted = () => Boolean(signal?.aborted);
+  const abortResult = () => {
+    diagnostics.aborted = true;
+    return {
+      error: { ok: false, error_code: "ABORTED", message: "요청이 취소되어 분석을 중단했습니다.", retryable: false },
+      diagnostics
+    };
+  };
+
   for (const scene of scenes) {
+    if (aborted()) return abortResult();
     const cast = rollingCast();
     onProgress({ stage: "scene", scene: scene.index, total: scenes.length });
 
@@ -369,6 +382,8 @@ async function runScenePipeline({
       locationMerger.add(item, scene.index);
       sceneEntities.locations.push(item);
     }
+
+    if (aborted()) return abortResult();
 
     const eventsPrompt = prompts.sceneEventsPrompt({
       sceneText: scene.text,
@@ -456,6 +471,7 @@ async function runScenePipeline({
 
   // 관계 pass: 원문 대신 병합된 cast·사건 프레임 요약을 입력으로 사용
   let relationships = [];
+  if (aborted()) return abortResult();
   if (characters.length && eventFrames.length) {
     onProgress({ stage: "relations", scene: scenes.length, total: scenes.length });
     const relPrompt = prompts.relationsPrompt({

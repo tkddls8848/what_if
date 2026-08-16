@@ -91,6 +91,7 @@ app.post("/api/analyze/ollama", async (req, res) => {
   }
 
   const sse = wantsStream ? startSse(res) : null;
+  const abort = watchDisconnect(res);
 
   const cacheKey = cache.makeKey({ text, model, promptVersion: prompts.PROMPT_VERSION });
   if (cache.cacheEnabled() && !force) {
@@ -114,11 +115,14 @@ app.post("/api/analyze/ollama", async (req, res) => {
 
   let result;
   try {
-    result = await pipeline.runScenePipeline({ text, model, client, onProgress });
+    result = await pipeline.runScenePipeline({ text, model, client, onProgress, signal: abort.signal });
   } catch (error) {
     result = { error: { ok: false, error_code: "INTERNAL", message: "분석 파이프라인 내부 오류", retryable: false } };
     console.error("[analyze] pipeline error:", error);
   }
+
+  // 요청자가 이미 떠났으면 보낼 곳도, 부분 결과를 캐시할 이유도 없다.
+  if (abort.signal.aborted) return;
 
   if (result.error) {
     const body = {
@@ -210,24 +214,44 @@ app.post("/api/whatif", async (req, res) => {
   res.json({ model: result.model, alternatives: result.alternatives, diagnostics: result.diagnostics });
 });
 
+/**
+ * 클라이언트가 응답을 끝까지 받기 전에 끊었는지 지켜본다.
+ *
+ * 상세 분석은 장면 하나당 Ollama 호출 두 번이라 한 요청이 100회를 넘길 수 있다.
+ * 화면을 닫은 사용자를 위해 그걸 끝까지 돌리면 다음 요청이 그만큼 밀린다.
+ */
+function watchDisconnect(res) {
+  const controller = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) controller.abort();
+  });
+  return controller;
+}
+
 function startSse(res) {
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
+  // 끊긴 소켓에 쓰면 EPIPE가 응답 객체의 error로 올라온다. 보낼 곳이 없으면 조용히 버린다.
+  const open = () => !res.writableEnded && !res.destroyed;
   return {
     send(event, data) {
+      if (!open()) return;
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     },
     end() {
+      if (!open()) return;
       res.end();
     }
   };
 }
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  // 루프백에만 바인딩한다. 이 서버는 원문·분석 캐시를 인증 없이 노출하는 로컬 앱이고,
+  // 0.0.0.0에 열면 같은 네트워크의 다른 기기가 그대로 접근한다.
+  app.listen(PORT, "127.0.0.1", () => {
     console.log(`Novel IF  http://localhost:${PORT}`);
   });
 }
