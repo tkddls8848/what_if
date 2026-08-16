@@ -55,7 +55,7 @@ test("exposes read-only tools, resources and prompts over stdio", async () => {
 test("as_of is a required argument in the published tool schemas", async () => {
   await withClient(async (client) => {
     const { tools } = await client.listTools();
-    const factTools = ["state_as_of", "who_is", "timeline_as_of", "graph_as_of", "arc_summary", "whatif_seed", "annotations_as_of"];
+    const factTools = ["state_as_of", "who_is", "timeline_as_of", "graph_as_of", "evidence_for", "arc_summary", "whatif_seed", "annotations_as_of"];
     factTools.forEach((name) => {
       const tool = tools.find((item) => item.name === name);
       assert.ok(tool.inputSchema.required.includes("as_of"), `${name}의 as_of가 선택 인자다`);
@@ -80,7 +80,7 @@ test("answers a spoiler-scoped question end to end", async () => {
 
     const evidence = payloadOf(await client.callTool({
       name: "evidence_for",
-      arguments: { document_id: "gamja", fact_id: timeline.events[0].event_id }
+      arguments: { document_id: "gamja", fact_id: timeline.events[0].event_id, as_of: 12 }
     }));
     assert.ok(evidence.evidence.quote.length > 0);
   });

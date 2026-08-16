@@ -107,22 +107,31 @@ function createOllamaClient({ baseUrl, fetchImpl, timeoutMs } = {}) {
   async function generateJson(args) {
     const result = await generate(args);
     if (!result.ok) return result;
+    const parseFailed = (message) => ({
+      ...errorResult("PARSE_FAILED", message, true),
+      prompt_eval_count: result.prompt_eval_count,
+      eval_count: result.eval_count,
+      raw: result.response.slice(0, 400)
+    });
+
+    let data;
     try {
-      const data = JSON.parse(result.response || "{}");
-      return {
-        ok: true,
-        data,
-        prompt_eval_count: result.prompt_eval_count,
-        eval_count: result.eval_count
-      };
+      data = JSON.parse(result.response || "{}");
     } catch (_error) {
-      return {
-        ...errorResult("PARSE_FAILED", "Ollama 응답 JSON 파싱 실패", true),
-        prompt_eval_count: result.prompt_eval_count,
-        eval_count: result.eval_count,
-        raw: result.response.slice(0, 400)
-      };
+      return parseFailed("Ollama 응답 JSON 파싱 실패");
     }
+    // 호출부는 data.characters처럼 필드를 바로 읽는다. null·배열·원시값이 그대로
+    // 나가면 거기서 TypeError가 나고 원인을 알 수 없는 INTERNAL이 된다.
+    // 파싱 실패와 같은 등급으로 다뤄 재시도 경로를 그대로 태운다.
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return parseFailed("Ollama 응답이 JSON 객체가 아닙니다");
+    }
+    return {
+      ok: true,
+      data,
+      prompt_eval_count: result.prompt_eval_count,
+      eval_count: result.eval_count
+    };
   }
 
   async function health() {

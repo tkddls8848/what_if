@@ -55,6 +55,9 @@ function isLocationName(name) {
 const DEFAULT_TARGET_CHARS = 1000;
 const MAX_SCENES = 60;
 
+/** 근거 검증에 실패했고 원래 confidence를 신뢰할 수 없을 때 쓰는 값. */
+const DEMOTED_CONFIDENCE = 0.35;
+
 // ── 장면 분할 ────────────────────────────────────────────────────────────────
 
 function splitSegments(text) {
@@ -176,6 +179,11 @@ function listOf(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim()) : [];
 }
 
+/** 스키마를 벗어난 모델 응답에서 배열 자리에 다른 값이 와도 순회가 깨지지 않게 한다. */
+function arrayOf(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function clampNumber(value, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -190,11 +198,24 @@ function verifyEvidence(evidence, sceneText) {
   return haystack.includes(quote.slice(0, 120));
 }
 
-function demoteConfidence(item) {
+/**
+ * 근거 검증에 실패한 항목의 confidence를 내린다.
+ *
+ * confidence는 두 채널을 쓴다. 숫자 채널(엔티티·event_frames)은 뒤에서
+ * `clampNumber(value, 0.6)`을 거치므로 여기서 "weak" 같은 문자열을 넣으면
+ * NaN → 기본값 0.6으로 되살아나 강등이 사라진다. 문자열 enum 채널
+ * (state_changes·relationships)은 반대로 숫자를 넣으면 enum을 벗어나
+ * "inferred"로 되돌아가 강등이 약해진다. 그래서 호출부가 채널을 알려준다.
+ *
+ * @param {number|null} numericFallback 숫자 채널이면 강등값, 문자열 채널이면 null
+ */
+function demoteConfidence(item, numericFallback = null) {
   if (typeof item.confidence === "number") {
     item.confidence = Math.max(0.1, item.confidence - 0.25);
-  } else {
+  } else if (numericFallback === null) {
     item.confidence = "weak";
+  } else {
+    item.confidence = numericFallback;
   }
   return item;
 }
@@ -336,15 +357,15 @@ async function runScenePipeline({
     }
 
     const sceneEntities = { characters: [], locations: [] };
-    for (const item of entitiesResult.data.characters || []) {
+    for (const item of arrayOf(entitiesResult.data.characters)) {
       const verified = verifyEvidence(item.evidence, scene.text);
-      if (!verified) { demoteConfidence(item); diagnostics.evidence_demoted += 1; }
+      if (!verified) { demoteConfidence(item, DEMOTED_CONFIDENCE); diagnostics.evidence_demoted += 1; }
       characterMerger.add(item, scene.index);
       sceneEntities.characters.push(item);
     }
-    for (const item of entitiesResult.data.locations || []) {
+    for (const item of arrayOf(entitiesResult.data.locations)) {
       const verified = verifyEvidence(item.evidence, scene.text);
-      if (!verified) { demoteConfidence(item); diagnostics.evidence_demoted += 1; }
+      if (!verified) { demoteConfidence(item, DEMOTED_CONFIDENCE); diagnostics.evidence_demoted += 1; }
       locationMerger.add(item, scene.index);
       sceneEntities.locations.push(item);
     }
@@ -369,9 +390,9 @@ async function runScenePipeline({
       continue;
     }
 
-    for (const frame of eventsResult.data.event_frames || []) {
+    for (const frame of arrayOf(eventsResult.data.event_frames)) {
       if (!verifyEvidence(frame.evidence, scene.text)) {
-        demoteConfidence(frame);
+        demoteConfidence(frame, DEMOTED_CONFIDENCE);
         diagnostics.evidence_demoted += 1;
       }
       eventFrames.push({
@@ -391,8 +412,8 @@ async function runScenePipeline({
         segment_indexes: scene.segment_indexes
       });
     }
-    for (const change of eventsResult.data.state_changes || []) {
-      if (!change.character) continue;
+    for (const change of arrayOf(eventsResult.data.state_changes)) {
+      if (!change?.character) continue;
       if (!verifyEvidence(change.evidence, scene.text)) {
         demoteConfidence(change);
         diagnostics.evidence_demoted += 1;
@@ -448,8 +469,8 @@ async function runScenePipeline({
       });
       track(relResult);
       if (relResult.ok) {
-        relationships = (relResult.data.relationships || [])
-          .filter((rel) => prompts.isAllowedRelation(rel.source_type, rel.target_type, rel.type))
+        relationships = arrayOf(relResult.data.relationships)
+          .filter((rel) => rel && prompts.isAllowedRelation(rel.source_type, rel.target_type, rel.type))
           .map((rel) => ({
             source: cleanShort(rel.source, 60),
             source_type: rel.source_type,

@@ -19,7 +19,6 @@ const ID_PREFIX_TO_COLLECTION = {
   rel: ["relations", "relation_id", "relation"],
   mention: ["mentions", "mention_id", "mention"],
   note: ["annotations", "annotation_id", "annotation"],
-  seg: ["segments", "segment_id", "segment"],
   scene: ["scenes", "scene_id", "scene"]
 };
 

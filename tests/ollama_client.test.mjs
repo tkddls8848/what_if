@@ -130,3 +130,26 @@ test("isAllowedSmallModel: 태그·파라미터 크기 판별", () => {
   assert.equal(isAllowedSmallModel("mymodel", "7B"), true);
   assert.equal(isAllowedSmallModel("mymodel", "70B"), false);
 });
+
+test("generateJson: JSON 객체가 아닌 응답은 PARSE_FAILED로 구분한다", async () => {
+  // 호출부가 data.characters를 바로 읽으므로 null·배열·원시값이 그대로 나가면
+  // 거기서 TypeError가 나고 원인을 알 수 없는 INTERNAL이 된다.
+  for (const body of ["null", "[1,2]", '"문자열"', "42", "true"]) {
+    const client = createOllamaClient({
+      baseUrl: "http://fake",
+      fetchImpl: async () => jsonResponse({ response: body })
+    });
+    const result = await client.generateJson({ model: "m4b", prompt: "p" });
+    assert.equal(result.ok, false, `${body}가 통과했다`);
+    assert.equal(result.error_code, "PARSE_FAILED");
+    assert.equal(result.retryable, true);
+  }
+
+  const client = createOllamaClient({
+    baseUrl: "http://fake",
+    fetchImpl: async () => jsonResponse({ response: '{"characters":[]}' })
+  });
+  const ok = await client.generateJson({ model: "m4b", prompt: "p" });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(ok.data, { characters: [] });
+});

@@ -130,7 +130,7 @@ tool("annotations_as_of", {
 tool("evidence_for", {
   title: "근거 되짚기",
   description: "사실 id(event_/char_/loc_/state_/rel_/mention_)로 원문 인용, 단락 번호, 신뢰도, 검수 상태, 제약 위반을 돌려준다. 어떤 주장이든 이 도구로 원문까지 되짚을 수 있어야 한다.",
-  inputSchema: { document_id: documentId, fact_id: z.string().describe("예: event_012, char_003") }
+  inputSchema: { document_id: documentId, fact_id: z.string().describe("예: event_012, char_003"), as_of: asOfArg }
 }, (args) => evidenceForFact(library, args));
 
 tool("arc_summary", {

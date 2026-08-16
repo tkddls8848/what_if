@@ -40,8 +40,25 @@ export function createLibrary({ dir = libraryDir() } = {}) {
       .sort((a, b) => a.document_id.localeCompare(b.document_id));
   }
 
+  /**
+   * 한 작품의 메타만 찾는다. `get()`이 `documents()`를 부르면 작품 수만큼
+   * readdir+describe가 반복되고, 그 `get()`을 다시 목록 순회에서 부르면 N+1이 된다.
+   *
+   * document_id는 MCP 클라이언트가 준 값이므로 경로로 조합하기 전에 구분자를
+   * 막는다. 예전 구현은 목록에 있는 이름만 비교해 이 문제가 없었다.
+   */
+  function describeOne(documentId) {
+    const id = String(documentId || "");
+    if (!id || id === "." || id === ".." || /[\\/]/u.test(id)) return null;
+
+    const fileName = `${id}.txt`;
+    if (fs.existsSync(path.join(dir, fileName))) return describe(dir, fileName);
+    // 확장자 대소문자가 다른 경우(.TXT)는 목록 규칙을 그대로 따른다.
+    return documents().find((item) => item.document_id === id) || null;
+  }
+
   function get(documentId) {
-    const meta = documents().find((item) => item.document_id === documentId);
+    const meta = describeOne(documentId);
     if (!meta) return null;
     const stat = fs.statSync(meta.path);
     const key = `${meta.document_id}:${stat.mtimeMs}:${stat.size}`;

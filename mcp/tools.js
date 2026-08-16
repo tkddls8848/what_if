@@ -214,19 +214,21 @@ export function annotationsAsOf(library, { document_id, as_of, category }) {
   return { document_id, as_of: at, count: annotations.length, annotations };
 }
 
-export function evidenceForFact(library, { document_id, fact_id }) {
+export function evidenceForFact(library, { document_id, fact_id, as_of }) {
   const { analysis } = requireDocument(library, document_id);
-  const found = findFact(analysis, fact_id);
+  const at = requireAsOf(analysis, as_of);
+  const scoped = asOf(analysis, at);
+  const found = findFact(scoped, fact_id);
   if (!found) throw new ToolError(`fact_id '${fact_id}'를 찾을 수 없습니다.`);
 
-  const packed = withEvidence(analysis, found.fact, found.fact_type, { fact_id, fact_type: found.fact_type });
+  const packed = withEvidence(scoped, found.fact, found.fact_type, { fact_id, fact_type: found.fact_type });
   if (!packed) throw new ToolError(`fact_id '${fact_id}'에 연결된 원문 근거가 없습니다.`);
 
-  const audit = (analysis.diagnostics?.audit?.violations || [])
+  const audit = (scoped.audit?.violations || [])
     .filter((violation) => violation.target_id === fact_id)
     .map((violation) => ({ code: violation.code, severity: violation.severity, message: violation.message }));
 
-  return { document_id, ...packed, audit };
+  return { document_id, as_of: at, ...packed, audit };
 }
 
 export function arcSummary(library, { document_id, as_of }) {

@@ -32,7 +32,12 @@ function parseTarget(input) {
   }
 
   const wikiMatch = url.pathname.match(/^\/wiki\/(.+)$/u);
-  const page = wikiMatch ? decodeURIComponent(wikiMatch[1]) : url.searchParams.get("title");
+  let page;
+  try {
+    page = wikiMatch ? decodeURIComponent(wikiMatch[1]) : url.searchParams.get("title");
+  } catch {
+    return { error: "문서 이름의 URL 인코딩이 올바르지 않습니다." };
+  }
   if (!page) return { error: "문서 이름을 URL에서 찾지 못했습니다." };
   return { host: url.hostname, page, sourceUrl: url.href };
 }

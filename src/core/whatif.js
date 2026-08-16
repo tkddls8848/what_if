@@ -168,6 +168,21 @@ export function normalizeBranch(analysis, payload, { forkSegment, premise, model
     method: `whatif:${model || "unknown"}`
   })).filter((event) => event.summary);
 
+  // 모델은 자기가 만든 사건의 순번(1부터)만 알려준다. 내부 id 생성은 우리 몫이다.
+  // summary가 빈 사건은 위에서 걸러지므로 순번을 배열 인덱스로 쓰면 어긋난다 —
+  // 걸러지기 전 순번(`order`)을 키로 잡아야 모델이 가리킨 사건에 붙는다.
+  const eventIdByOrder = new Map(events.map((event) => [event.order, event.event_id]));
+  const lastEventId = events.length ? events[events.length - 1].event_id : "";
+  const eventIdForOrder = (value) => {
+    const order = Number(value);
+    if (!Number.isFinite(order)) return lastEventId;
+    // 모델이 지운 사건을 가리키면 그보다 앞선 가장 가까운 사건에 붙인다.
+    for (let candidate = Math.trunc(order); candidate >= 1; candidate -= 1) {
+      if (eventIdByOrder.has(candidate)) return eventIdByOrder.get(candidate);
+    }
+    return events.length ? events[0].event_id : "";
+  };
+
   const states = listOf(payload?.state_changes).map((item, position) => ({
     state_id: `${branchId}_state_${String(position + 1).padStart(3, "0")}`,
     branch_id: branchId,
@@ -175,8 +190,7 @@ export function normalizeBranch(analysis, payload, { forkSegment, premise, model
     mental_state: cleanText(item?.mental_state, 60),
     physical_state: cleanText(item?.physical_state, 60),
     location: cleanText(item?.location, 60),
-    // 모델은 자기가 만든 사건의 순번(1부터)만 알려준다. 내부 id 생성은 우리 몫이다.
-    after_event_id: events[Math.min(Math.max(Number(item?.after_event_order) || events.length, 1), events.length) - 1]?.event_id || "",
+    after_event_id: eventIdForOrder(item?.after_event_order),
     origin: "generated",
     status: "suggested"
   })).filter((state) => knownCharacters.has(state.character));
@@ -220,9 +234,14 @@ export function attachBranch(analysis, branch) {
  */
 export function detectCanonLeak(analysis, branch) {
   const fork = Number(branch.fork_segment) || 0;
-  const futureSegments = (analysis.segments || []).filter((segment) => segment.index > fork);
+  // 정규화는 분기 사건 수와 무관하게 원작 한 벌에만 필요하다. 루프 안에 두면
+  // 장편에서 사건 수만큼 전체 원문을 다시 정규화한다.
+  const futureSegments = (analysis.segments || [])
+    .filter((segment) => segment.index > fork)
+    .map((segment) => ({ at: segment.index, hay: normalizeForMatch(segment.text) }));
   const futureEvents = (analysis.events || [])
-    .filter((event) => segmentIndexOf(analysis, event.segment_id) > fork);
+    .filter((event) => segmentIndexOf(analysis, event.segment_id) > fork)
+    .map((event) => ({ at: segmentIndexOf(analysis, event.segment_id), hay: normalizeForMatch(event.summary) }));
   const leaks = [];
 
   branch.events.forEach((event) => {
@@ -230,18 +249,16 @@ export function detectCanonLeak(analysis, branch) {
     if (needle.length < LEAK_NGRAM) return;
 
     for (const segment of futureSegments) {
-      const hay = normalizeForMatch(segment.text);
-      const hit = longestSharedRun(needle, hay, LEAK_NGRAM);
+      const hit = longestSharedRun(needle, segment.hay, LEAK_NGRAM);
       if (hit) {
-        leaks.push({ event_id: event.event_id, kind: "segment", at: segment.index, quote: hit });
+        leaks.push({ event_id: event.event_id, kind: "segment", at: segment.at, quote: hit });
         return;
       }
     }
     for (const canon of futureEvents) {
-      const hay = normalizeForMatch(canon.summary);
-      const hit = longestSharedRun(needle, hay, LEAK_NGRAM);
+      const hit = longestSharedRun(needle, canon.hay, LEAK_NGRAM);
       if (hit) {
-        leaks.push({ event_id: event.event_id, kind: "event", at: segmentIndexOf(analysis, canon.segment_id), quote: hit });
+        leaks.push({ event_id: event.event_id, kind: "event", at: canon.at, quote: hit });
         return;
       }
     }

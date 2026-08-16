@@ -143,26 +143,45 @@ function bindEvents() {
     await runAnalysis({ forceDynamicSeed: true, triggerButton: els.generateSeedBtn });
   });
 
+  // localStorage는 장편 분석 결과에서 용량 한도를 넘길 수 있다. 실패를 삼키면
+  // 사용자는 저장됐다고 믿는다 — 성공/실패를 버튼에 그대로 드러낸다.
   els.saveSnapshotBtn.addEventListener("click", () => {
-    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
-      analysis: state.analysis,
-      sourceText: els.sourceText.value,
-      currentSampleId: state.currentSampleId,
-      uploadedDocument: state.uploadedDocument
-    }));
-    flashButton(els.saveSnapshotBtn, "저장됨");
+    try {
+      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+        analysis: state.analysis,
+        sourceText: els.sourceText.value,
+        currentSampleId: state.currentSampleId,
+        uploadedDocument: state.uploadedDocument
+      }));
+      flashButton(els.saveSnapshotBtn, "저장됨");
+    } catch (error) {
+      console.error("[snapshot] save failed:", error);
+      flashButton(els.saveSnapshotBtn, "저장 실패");
+      window.alert(`스냅샷을 저장하지 못했습니다: ${error.message}\n원문이 길면 브라우저 저장 용량을 넘길 수 있습니다.`);
+    }
   });
 
   els.loadSnapshotBtn.addEventListener("click", () => {
     const raw = localStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return flashButton(els.loadSnapshotBtn, "없음");
-    const snapshot = JSON.parse(raw);
-    els.sourceText.value = snapshot.sourceText;
-    state.uploadedDocument = snapshot.uploadedDocument;
+
+    let snapshot;
+    try {
+      snapshot = JSON.parse(raw);
+      if (!snapshot || typeof snapshot !== "object") throw new Error("스냅샷 형식이 올바르지 않습니다.");
+    } catch (error) {
+      console.error("[snapshot] load failed:", error);
+      flashButton(els.loadSnapshotBtn, "복원 실패");
+      window.alert(`저장된 스냅샷을 읽지 못했습니다: ${error.message}`);
+      return;
+    }
+
+    els.sourceText.value = snapshot.sourceText || "";
+    state.uploadedDocument = snapshot.uploadedDocument || null;
     if (state.uploadedDocument) ensureCustomSampleOption(state.uploadedDocument.title);
-    state.currentSampleId = snapshot.currentSampleId;
+    state.currentSampleId = snapshot.currentSampleId || DEFAULT_SAMPLE_ID;
     els.sampleSelect.value = state.currentSampleId;
-    state.analysis = snapshot.analysis;
+    state.analysis = snapshot.analysis || null;
     state.currentSegment = 1;
     renderAll();
     flashButton(els.loadSnapshotBtn, "복원됨");

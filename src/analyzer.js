@@ -208,7 +208,10 @@ function isNamedLocationHead(name, suffix, following) {
     /^\s*(?:안|밖)(?:에서|으로|에는|에도|에|의|은|는)?(?:\s|$)/u.test(following);
 }
 
-export function buildDynamicSeedLexicon(payload, model) {
+export function buildDynamicSeedLexicon(payloadInput, model) {
+  // 서버 payload는 캐시 파일에서도 올 수 있다. 배열 자리에 다른 값이 들어와도
+  // seed 생성이 던지지 않아야 한다 — 던지면 호출부가 조용히 분석을 잃는다.
+  const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : {};
   const eventCharacterSeeds = collectPayloadEventNames(payload, "characters").map((name) => ({
     name,
     aliases: [name],
@@ -229,7 +232,7 @@ export function buildDynamicSeedLexicon(payload, model) {
     // so downstream extraction trusts it and skips the rule-based particle/suffix
     // augmentation that would otherwise re-introduce common-noun noise.
     authoritative: true,
-    characters: [...(payload.characters || []), ...eventCharacterSeeds].map((item) => {
+    characters: [...listFrom(payload.characters), ...eventCharacterSeeds].map((item) => {
       const name = cleanName(item.name);
       return {
         canonical_name: name,
@@ -240,7 +243,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((seed) => seed.canonical_name && seed.aliases.length),
-    locations: [...(payload.locations || []), ...eventLocationSeeds].map((item) => {
+    locations: [...listFrom(payload.locations), ...eventLocationSeeds].map((item) => {
       const name = cleanName(item.name);
       return {
         name,
@@ -251,7 +254,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((seed) => seed.name && seed.aliases.length),
-    eventTypes: (payload.event_types || []).map((item) => {
+    eventTypes: listFrom(payload.event_types).map((item) => {
       const type = normalizeLexiconId(item.type || item.id || item.label);
       const label = cleanName(item.label || item.name || item.type);
       return {
@@ -262,7 +265,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((entry) => entry.type && entry.words.length),
-    mentalStates: (payload.mental_states || []).map((item) => {
+    mentalStates: listFrom(payload.mental_states).map((item) => {
       const stateName = cleanName(item.state || item.label || item.name);
       return {
         state: stateName,
@@ -271,7 +274,7 @@ export function buildDynamicSeedLexicon(payload, model) {
         method: `ollama-dynamic-seed:${model}`
       };
     }).filter((entry) => entry.state && entry.words.length),
-    physicalStates: (payload.physical_states || []).map((item) => {
+    physicalStates: listFrom(payload.physical_states).map((item) => {
       const stateName = cleanName(item.state || item.label || item.name);
       return {
         state: stateName,
@@ -285,12 +288,12 @@ export function buildDynamicSeedLexicon(payload, model) {
 
 function collectPayloadEventNames(payload, field) {
   return unique([
-    ...(payload.event_frames || []).flatMap((frame) => {
-      if (field === "characters") return listFrom(frame.who).map(cleanName);
-      if (field === "locations") return listFrom(frame.where).map(cleanName);
+    ...listFrom(payload.event_frames).flatMap((frame) => {
+      if (field === "characters") return listFrom(frame?.who).map(cleanName);
+      if (field === "locations") return listFrom(frame?.where).map(cleanName);
       return [];
     }),
-    ...(payload.relationships || []).flatMap((relationship) => {
+    ...listFrom(payload.relationships).flatMap((relationship = {}) => {
       const names = [];
       if (field === "characters" && relationship.source_type === "character") names.push(relationship.source);
       if (field === "characters" && relationship.target_type === "character") names.push(relationship.target);
@@ -298,7 +301,7 @@ function collectPayloadEventNames(payload, field) {
       if (field === "locations" && relationship.target_type === "location") names.push(relationship.target);
       return names.map(cleanName);
     }),
-    ...(payload.state_changes || []).map((change) => field === "characters" ? cleanName(change.character) : "")
+    ...listFrom(payload.state_changes).map((change) => field === "characters" ? cleanName(change?.character) : "")
   ]
     .filter(Boolean));
 }

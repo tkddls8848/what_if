@@ -298,3 +298,53 @@ test("runScenePipeline: PARSE_FAILED는 1회 재시도한다", async () => {
   assert.ok(attempts >= 2);
   assert.equal(result.diagnostics.scenes_failed.length, 0);
 });
+
+test("runScenePipeline: 숫자가 아닌 frame confidence도 기본값 아래로 강등된다", async () => {
+  // 강등값이 문자열이면 뒤따르는 clampNumber가 NaN → 기본값 0.6으로 되살려
+  // 강등이 사라진다. 기본값과 구별되는 값이어야 검수 화면에서 걸러진다.
+  for (const confidence of ["high", undefined, null]) {
+    const client = scriptedClient((args) => {
+      if (args.prompt.includes("인물과 장소만 추출")) {
+        return { ok: true, data: { characters: [], locations: [] } };
+      }
+      return {
+        ok: true,
+        data: {
+          event_frames: [{ type: "movement", summary: "요약", evidence: "완전히 지어낸 인용문입니다", confidence }],
+          state_changes: []
+        }
+      };
+    });
+    const result = await runScenePipeline({ text: MINI_NOVEL, model: "m4b", client, targetChars: 8000 });
+    assert.ok(result.diagnostics.evidence_demoted > 0);
+    assert.ok(result.payload.event_frames[0].confidence < 0.6,
+      `confidence=${String(confidence)}가 기본값 0.6 이상으로 남았다`);
+  }
+});
+
+test("runScenePipeline: state_changes는 문자열 enum 채널로 강등된다", async () => {
+  const client = scriptedClient((args) => {
+    if (args.prompt.includes("인물과 장소만 추출")) {
+      return { ok: true, data: { characters: [{ name: "복녀", evidence: "복녀는 가난한 집에서" }], locations: [] } };
+    }
+    return {
+      ok: true,
+      data: {
+        event_frames: [],
+        state_changes: [{ character: "복녀", evidence: "완전히 지어낸 인용문입니다", confidence: "explicit" }]
+      }
+    };
+  });
+  const result = await runScenePipeline({ text: MINI_NOVEL, model: "m4b", client, targetChars: 8000 });
+  assert.equal(result.payload.state_changes[0].confidence, "weak");
+});
+
+test("runScenePipeline: 배열이어야 할 자리에 다른 값이 와도 죽지 않는다", async () => {
+  const client = scriptedClient(() => ({
+    ok: true,
+    data: { characters: 5, locations: { a: 1 }, event_frames: "x", state_changes: 7 }
+  }));
+  const result = await runScenePipeline({ text: MINI_NOVEL, model: "m4b", client, targetChars: 8000 });
+  assert.ok(result.error, "결과가 비면 구조화 오류여야 한다");
+  assert.equal(result.error.error_code, "EMPTY_RESULT");
+});

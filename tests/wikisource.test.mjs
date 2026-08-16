@@ -33,6 +33,7 @@ test("only wikisource hosts are accepted", () => {
   assert.match(parseTarget("http://ko.wikisource.org/wiki/감자").error, /https/u);
   assert.match(parseTarget("파일이름.txt").error, /URL 형식/u);
   assert.match(parseTarget("").error, /필요합니다/u);
+  assert.match(parseTarget("https://ko.wikisource.org/wiki/%").error, /URL 인코딩/u);
 });
 
 test("strips MediaWiki chrome but keeps the body", () => {
