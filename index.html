@@ -178,6 +178,13 @@
               <option value="rejected">제외</option>
             </select>
           </label>
+          <label>
+            정렬
+            <select id="reviewSort" title="읽은 차례는 원문에서 처음 드러나는 단락 순으로, 위반·신뢰도는 제약 위반과 낮은 신뢰도부터 늘어놓습니다. 목록에 들어가는 항목은 어느 쪽이든 같습니다.">
+              <option value="reading">읽은 차례</option>
+              <option value="audit">위반·신뢰도</option>
+            </select>
+          </label>
           <button id="rebuildBtn" type="button">재계산</button>
           <button id="addManualEventBtn" type="button">사건 추가</button>
         </section>

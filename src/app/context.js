@@ -32,6 +32,9 @@ export const state = {
   spoilerSafe: true,
   selected: null,
   exportFormat: "json",
+  // 검수 목록 정렬. 기본은 독자가 읽은 차례이고, 도구 정비 순서(위반·신뢰도)는
+  // `audit`으로 남겨 둔다. 무엇이 목록에 들어가는지는 바꾸지 않는다 — 순서만이다.
+  reviewSort: "reading",
   filters: {
     eventType: "all",
     status: "active",
@@ -72,6 +75,7 @@ export const els = {
   clearSelectionBtn: $("#clearSelectionBtn"),
   timelineList: $("#timelineList"),
   characterCards: $("#characterCards"),
+  reviewSort: $("#reviewSort"),
   reviewSourceStats: $("#reviewSourceStats"),
   reviewSource: $("#reviewSource"),
   reviewStats: $("#reviewStats"),

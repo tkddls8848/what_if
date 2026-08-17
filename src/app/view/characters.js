@@ -1,5 +1,6 @@
 import { state, els, STATUS, STATUS_LABELS } from "../context.js";
 import { statusButtons } from "../editing.js";
+import { selectCharacterEvents } from "./selectors.js";
 import {
   escapeAttr,
   escapeHtml,
@@ -35,7 +36,7 @@ export function renderCharacters() {
     const relations = characterRelationSummary(character.character_id);
     const path = characterSpatialPath(character.character_id);
     const density = characterAppearanceDensity(character.character_id);
-    const events = characterEvents(character.character_id).slice(-6);
+    const events = selectCharacterEvents(character.character_id).slice(-6);
     const card = document.createElement("article");
     card.className = `character-card ${statusClass(character.status)}`;
     card.innerHTML = `
@@ -102,14 +103,6 @@ export function renderCharacters() {
   });
 }
 
-function characterEvents(characterId) {
-  return state.analysis.events
-    .filter((event) => event.status !== STATUS.REJECTED)
-    .filter((event) => isVisibleSegmentId(event.segment_id))
-    .filter((event) => event.characters.includes(characterId))
-    .sort((a, b) => segmentOrder(a.segment_id) - segmentOrder(b.segment_id) || a.sentence_index - b.sentence_index);
-}
-
 function characterStateHistory(characterId) {
   const history = state.analysis.states
     .filter((item) => item.character_id === characterId && item.status !== STATUS.REJECTED)
@@ -147,7 +140,7 @@ function characterRelationSummary(characterId) {
     return relationMap.get(otherId);
   };
 
-  characterEvents(characterId).forEach((event) => {
+  selectCharacterEvents(characterId).forEach((event) => {
     event.characters
       .filter((id) => id !== characterId)
       .forEach((otherId) => {
@@ -239,7 +232,7 @@ function characterAppearanceDensity(characterId) {
       if (bucket) bucket.count += 1;
     });
 
-  characterEvents(characterId).forEach((event) => {
+  selectCharacterEvents(characterId).forEach((event) => {
     const sceneId = sceneIndexBySegment.get(event.segment_id);
     const bucket = buckets.find((item) => item.scene_id === sceneId);
     if (bucket) bucket.count += 1;

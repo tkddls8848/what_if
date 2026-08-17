@@ -212,6 +212,11 @@ function bindEvents() {
     renderAll();
   });
 
+  els.reviewSort.addEventListener("change", (event) => {
+    state.reviewSort = event.target.value;
+    renderAll();
+  });
+
   els.clearSelectionBtn.addEventListener("click", () => {
     state.selected = null;
     renderAll();

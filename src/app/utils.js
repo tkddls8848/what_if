@@ -121,10 +121,6 @@ export function isVisibleSegmentId(segmentId) {
   return isKnownAt({ valid_from: segmentOrder(segmentId) }, currentScopeTime());
 }
 
-export function isCurrentSegmentId(segmentId) {
-  return segmentOrder(segmentId) === state.currentSegment;
-}
-
 export function segmentOrder(segmentId) {
   return state.analysis?.segments.find((segment) => segment.segment_id === segmentId)?.index || 0;
 }

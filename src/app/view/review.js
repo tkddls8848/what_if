@@ -32,14 +32,18 @@ export function renderReview() {
       const segmentId = kind === "event" ? item.segment_id : item.first_segment_id;
       return isVisibleSegmentId(segmentId);
     })
-    .map((entry) => ({ ...entry, violations: reviewViolations(analysis, entry.kind, entry.id) }))
-    // 제약 위반(error)이 있는 항목을 먼저, 그 다음은 기존 규칙대로 신뢰도 오름차순.
-    .sort((a, b) => errorRank(a.violations) - errorRank(b.violations) || (a.item.confidence || 0) - (b.item.confidence || 0));
+    .map((entry) => ({
+      ...entry,
+      order: segmentOrder(entry.kind === "event" ? entry.item.segment_id : entry.item.first_segment_id),
+      violations: reviewViolations(analysis, entry.kind, entry.id)
+    }))
+    .sort(REVIEW_SORTS[state.reviewSort] || REVIEW_SORTS.reading);
 
-  els.reviewStats.textContent = `${items.length}개`;
+  const pending = items.filter(({ item }) => item.status === STATUS.SUGGESTED).length;
+  els.reviewStats.textContent = pending ? `${items.length}개 · 미확정 ${pending}` : `${items.length}개`;
   els.reviewList.innerHTML = items.length ? "" : `<div class="empty-state">검수할 항목이 없습니다.</div>`;
 
-  items.forEach(({ kind, id, item, violations }) => {
+  items.forEach(({ kind, id, item, order, violations }) => {
     const row = document.createElement("article");
     row.className = `review-item ${statusClass(item.status)} ${state.selected?.kind === kind && state.selected?.id === id ? "selected" : ""}`;
     const title = item.canonical_name || item.name || item.summary;
@@ -55,6 +59,7 @@ export function renderReview() {
         <input data-edit-kind="${kind}" data-edit-id="${id}" data-edit-field="${kind === "event" ? "summary" : kind === "location" ? "name" : "canonical_name"}" value="${escapeAttr(title)}">
       </label>
       <div class="review-meta">
+        <span title="원문에서 처음 드러나는 단락">${positionLabel(order)}</span>
         <span>${Math.round((item.confidence || 0) * 100)}%</span>
         <span>${item.method || "manual"}</span>
       </div>
@@ -142,6 +147,36 @@ function reviewViolations(analysis, kind, id) {
 
 function errorRank(violations) {
   return violations.some((violation) => violation.severity === "error") ? 0 : 1;
+}
+
+/**
+ * 검수 목록 정렬.
+ *
+ * 기본값은 **독자가 읽은 차례**다. "추출기가 자신 없어 하는 것부터"(`audit`)는 도구를
+ * 정비하는 순서라서, 같은 작업이 오류 사냥으로만 보인다. 읽은 차례로 놓으면 그 작업이
+ * "이 단락에서 새로 알게 된 것을 확정한다"가 된다. 오류 사냥도 여전히 필요하므로
+ * 예전 순서를 지우지 않고 보조 모드로 남긴다.
+ *
+ * 정렬은 표시층이다. **무엇이 목록에 들어가는지는 건드리지 않는다** — `/check`가
+ * 시점 제한을 끄는 것은 설계이고(`doc/README.md` 6절), 여기서 `order`는 가리는 기준이
+ * 아니라 늘어놓는 기준으로만 쓰인다.
+ *
+ * `order`는 인물·장소에서 `valid_from`과 같은 값이다(`core/asof.js`가 첫 등장 단락
+ * index로 채운다). 사건에는 `valid_from`이 없으므로 두 종류를 한 축에 세우려면
+ * segment index를 써야 한다.
+ */
+const REVIEW_SORTS = {
+  reading: (a, b) =>
+    a.order - b.order ||
+    errorRank(a.violations) - errorRank(b.violations) ||
+    (a.item.confidence || 0) - (b.item.confidence || 0),
+  audit: (a, b) =>
+    errorRank(a.violations) - errorRank(b.violations) ||
+    (a.item.confidence || 0) - (b.item.confidence || 0)
+};
+
+function positionLabel(order) {
+  return order ? `P${String(order).padStart(3, "0")}` : "—";
 }
 
 function renderViolations(violations) {
