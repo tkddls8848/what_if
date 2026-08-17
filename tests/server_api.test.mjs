@@ -138,7 +138,7 @@ test.after(() => {
   fs.rmSync(CACHE_DIR, { recursive: true, force: true });
 });
 
-test("GET /api/ollama/health: 도달성·허용 모델·캐시 상태를 보고한다", async () => {
+test("GET /api/ollama/health: reports reachability, allowed models and cache state", async () => {
   const response = await fetch(`${api.url}/api/ollama/health`);
   assert.equal(response.status, 200);
   const body = await response.json();
@@ -149,13 +149,13 @@ test("GET /api/ollama/health: 도달성·허용 모델·캐시 상태를 보고�
   assert.equal(body.pipeline.prompt_version, "scene-v2");
 });
 
-test("GET /api/ollama/models: 허용 모델만 반환한다", async () => {
+test("GET /api/ollama/models: returns only allowed models", async () => {
   const response = await fetch(`${api.url}/api/ollama/models`);
   const body = await response.json();
   assert.deepEqual(body.models.map((model) => model.name), ["qwen3.5:4b"]);
 });
 
-test("POST /api/analyze/ollama: text 없으면 400", async () => {
+test("POST /api/analyze/ollama: 400 without text", async () => {
   const response = await fetch(`${api.url}/api/analyze/ollama`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -166,7 +166,7 @@ test("POST /api/analyze/ollama: text 없으면 400", async () => {
   assert.equal(body.error_code, "INVALID_ARGUMENT");
 });
 
-test("POST /api/analyze/ollama: 비허용 모델은 400", async () => {
+test("POST /api/analyze/ollama: 400 for a model outside the allowed sizes", async () => {
   const response = await fetch(`${api.url}/api/analyze/ollama`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -175,7 +175,7 @@ test("POST /api/analyze/ollama: 비허용 모델은 400", async () => {
   assert.equal(response.status, 400);
 });
 
-test("POST /api/analyze/ollama (비스트림): 병합 결과와 진단을 반환한다", async () => {
+test("POST /api/analyze/ollama (non-stream): returns the merged result and diagnostics", async () => {
   const response = await fetch(`${api.url}/api/analyze/ollama`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -189,7 +189,7 @@ test("POST /api/analyze/ollama (비스트림): 병합 결과와 진단을 반환
   assert.ok(body.diagnostics.prompt_eval_total > 0);
 });
 
-test("POST /api/analyze/ollama (SSE): progress와 done 이벤트를 보낸다", async () => {
+test("POST /api/analyze/ollama (SSE): emits progress and done events", async () => {
   const response = await fetch(`${api.url}/api/analyze/ollama`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -208,7 +208,7 @@ test("POST /api/analyze/ollama (SSE): progress와 done 이벤트를 보낸다", 
   assert.ok(done.data.analysis.characters.length > 0);
 });
 
-test("POST /api/analyze/ollama: 클라이언트가 끊으면 남은 장면을 돌리지 않는다", async () => {
+test("POST /api/analyze/ollama: a disconnected client stops the remaining scenes", async () => {
   // 장면당 Ollama 2회라 한 요청이 100회를 넘길 수 있다. 화면을 닫은 사용자를 위해
   // 끝까지 돌리면 다음 요청이 그만큼 밀린다. 부분 결과를 캐시에 남겨서도 안 된다.
   const slow = await startSlowOllama(60);
@@ -249,7 +249,7 @@ test("POST /api/analyze/ollama: 클라이언트가 끊으면 남은 장면을 �
   }
 });
 
-test("캐시 활성 시 두 번째 요청은 hit, force는 우회한다", async () => {
+test("with the cache on, the second request hits and force bypasses it", async () => {
   process.env.NOVEL_IF_CACHE = "1";
   try {
     const request = (extra = {}) => fetch(`${api.url}/api/analyze/ollama`, {
@@ -268,7 +268,7 @@ test("캐시 활성 시 두 번째 요청은 hit, force는 우회한다", async 
   }
 });
 
-test("POST /api/whatif: 원문 없이 시드만으로 분기를 생성한다", async () => {
+test("POST /api/whatif: generates a branch from the seed alone, without the source text", async () => {
   const analysis = analyzeNovel({ text: MINI_NOVEL, title: "mini", sample: { id: "custom" } });
   const seed = branchSeed(analysis, 1);
   sentPrompts.length = 0;
@@ -302,7 +302,7 @@ test("POST /api/whatif: 원문 없이 시드만으로 분기를 생성한다", a
   assert.deepEqual(branch.diagnostics.canon_leak, []);
 });
 
-test("POST /api/whatif: seed에 원문을 실어 보내면 거부한다", async () => {
+test("POST /api/whatif: rejects a seed carrying the source text", async () => {
   const response = await fetch(`${api.url}/api/whatif`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -314,7 +314,7 @@ test("POST /api/whatif: seed에 원문을 실어 보내면 거부한다", async 
   assert.match(body.message, /원문을 넣지 마세요/u);
 });
 
-test("POST /api/whatif: fork_segment 없으면 400", async () => {
+test("POST /api/whatif: 400 without fork_segment", async () => {
   const response = await fetch(`${api.url}/api/whatif`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -323,7 +323,7 @@ test("POST /api/whatif: fork_segment 없으면 400", async () => {
   assert.equal(response.status, 400);
 });
 
-test("Ollama 미기동이면 502와 CONNECTION_FAILED를 반환한다", async () => {
+test("an unreachable Ollama returns 502 with CONNECTION_FAILED", async () => {
   const previous = process.env.OLLAMA_URL;
   process.env.OLLAMA_URL = "http://127.0.0.1:9"; // 연결 불가 포트
   try {
@@ -341,7 +341,7 @@ test("Ollama 미기동이면 502와 CONNECTION_FAILED를 반환한다", async ()
   }
 });
 
-test("GET /api/import/wikisource: 깨진 URL 인코딩은 400이고 서버는 살아 있다", async () => {
+test("GET /api/import/wikisource: broken URL encoding is 400 and the server survives", async () => {
   // decodeURIComponent가 던지면 Express 4는 async 핸들러의 rejection을 잡지 않아
   // unhandled rejection으로 프로세스가 죽었다. 라우트 수준에서 고정한다.
   for (const broken of ["%", "%E0%A4", "%zz", "%C3%28"]) {
@@ -358,7 +358,7 @@ test("GET /api/import/wikisource: 깨진 URL 인코딩은 400이고 서버는 �
   assert.equal(alive.status, 200);
 });
 
-test("GET /api/import/wikisource: 위키문헌 밖 호스트는 400으로 거부한다", async () => {
+test("GET /api/import/wikisource: rejects a host outside wikisource with 400", async () => {
   // 임의 URL을 받으면 이 서버가 열린 프록시가 된다.
   for (const url of ["https://example.com/wiki/x", "http://ko.wikisource.org/wiki/감자", "file:///etc/passwd"]) {
     const response = await fetch(`${api.url}/api/import/wikisource?url=${encodeURIComponent(url)}`);

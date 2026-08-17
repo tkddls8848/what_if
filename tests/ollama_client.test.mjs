@@ -19,7 +19,7 @@ function brokenJsonResponse(status = 200) {
   };
 }
 
-test("generate: 정상 응답에서 본문·토큰 계측을 반환한다", async () => {
+test("generate: returns the body and token counts from a healthy response", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async (url, init) => {
@@ -36,7 +36,7 @@ test("generate: 정상 응답에서 본문·토큰 계측을 반환한다", asyn
   assert.equal(result.eval_count, 88);
 });
 
-test("generateJson: JSON 파싱 성공과 PARSE_FAILED 구분", async () => {
+test("generateJson: separates a parsed payload from PARSE_FAILED", async () => {
   const okClient = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async () => jsonResponse({ response: "{\"characters\":[]}" })
@@ -55,7 +55,7 @@ test("generateJson: JSON 파싱 성공과 PARSE_FAILED 구분", async () => {
   assert.equal(failed.retryable, true);
 });
 
-test("generateJson: JSON 객체가 아닌 응답은 PARSE_FAILED로 구분한다", async () => {
+test("generateJson: a response that is not a JSON object is PARSE_FAILED", async () => {
   // 호출부가 data.characters를 바로 읽으므로 null·배열·원시값이 그대로 나가면
   // 거기서 TypeError가 나고 원인을 알 수 없는 INTERNAL이 된다.
   for (const body of ["null", "[1,2]", '"문자열"', "42", "true"]) {
@@ -78,7 +78,7 @@ test("generateJson: JSON 객체가 아닌 응답은 PARSE_FAILED로 구분한다
   assert.deepEqual(ok.data, { characters: [] });
 });
 
-test("연결 실패는 CONNECTION_FAILED로 변환된다", async () => {
+test("a connection failure becomes CONNECTION_FAILED", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async () => { throw new TypeError("fetch failed"); }
@@ -90,7 +90,7 @@ test("연결 실패는 CONNECTION_FAILED로 변환된다", async () => {
   assert.ok(result.message.includes("http://fake"));
 });
 
-test("timeout은 TIMEOUT으로 변환된다", async () => {
+test("a timeout becomes TIMEOUT", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     timeoutMs: 20,
@@ -108,7 +108,7 @@ test("timeout은 TIMEOUT으로 변환된다", async () => {
   assert.equal(result.retryable, true);
 });
 
-test("HTTP 오류 상태는 UPSTREAM_ERROR로 변환된다", async () => {
+test("an HTTP error status becomes UPSTREAM_ERROR", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async () => jsonResponse({ error: "model not found" }, 404)
@@ -120,7 +120,7 @@ test("HTTP 오류 상태는 UPSTREAM_ERROR로 변환된다", async () => {
   assert.equal(result.retryable, false);
 });
 
-test("비JSON 본문은 BAD_RESPONSE로 변환된다", async () => {
+test("a non-JSON body becomes BAD_RESPONSE", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async () => brokenJsonResponse(200)
@@ -130,7 +130,7 @@ test("비JSON 본문은 BAD_RESPONSE로 변환된다", async () => {
   assert.equal(result.error_code, "BAD_RESPONSE");
 });
 
-test("listModels: 허용 크기 판정을 포함한다", async () => {
+test("listModels: reports whether each model size is allowed", async () => {
   const client = createOllamaClient({
     baseUrl: "http://fake",
     fetchImpl: async () => jsonResponse({
@@ -146,7 +146,7 @@ test("listModels: 허용 크기 판정을 포함한다", async () => {
   assert.deepEqual(allowed, ["qwen3.5:4b"]);
 });
 
-test("isAllowedSmallModel: 태그·파라미터 크기 판별", () => {
+test("isAllowedSmallModel: decides from the tag or the parameter size", () => {
   assert.equal(isAllowedSmallModel("qwen3.5:4b"), true);
   assert.equal(isAllowedSmallModel("gemma4:e4b"), true);
   assert.equal(isAllowedSmallModel("llama3:70b"), false);

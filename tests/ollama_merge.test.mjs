@@ -23,7 +23,7 @@ function analyzeWithFixturePayload() {
   return analysis;
 }
 
-test("fixture payload가 동적 seed와 병합 경로를 통과한다", () => {
+test("a fixture payload passes through the dynamic seed and merge path", () => {
   const analysis = analyzeWithFixturePayload();
 
   const characters = analysis.characters.map((item) => item.canonical_name);
@@ -40,7 +40,7 @@ test("fixture payload가 동적 seed와 병합 경로를 통과한다", () => {
   assert.equal(analysis.diagnostics.ollama.model, "qwen3.5:4b");
 });
 
-test("병합된 엔티티는 원문 mention에 앵커된다", () => {
+test("merged entities stay anchored to a mention in the source", () => {
   const analysis = analyzeWithFixturePayload();
   const boknyeo = analysis.characters.find((item) => item.canonical_name === "복녀");
   assert.ok(boknyeo);
@@ -51,7 +51,7 @@ test("병합된 엔티티는 원문 mention에 앵커된다", () => {
   assert.ok(mention.segment_id, "mention은 segment에 연결된다");
 });
 
-test("LLM 병합 후에도 오탐 금지 회귀 기준을 유지한다", () => {
+test("the false-positive regression bar holds after an LLM merge", () => {
   const analysis = analyzeWithFixturePayload();
   const characters = analysis.characters.map((item) => item.canonical_name);
   const locations = analysis.locations.map((item) => item.name);
@@ -66,14 +66,14 @@ test("LLM 병합 후에도 오탐 금지 회귀 기준을 유지한다", () => {
   );
 });
 
-test("LLM 항목은 확정이 아니라 suggested 상태로 진입한다", () => {
+test("LLM items enter as suggested, never as confirmed", () => {
   const analysis = analyzeWithFixturePayload();
   const wang = analysis.characters.find((item) => item.canonical_name === "왕 서방");
   assert.ok(wang);
   assert.equal(wang.status, "suggested");
 });
 
-test("존재하지 않는 인물 payload는 mention 앵커 실패로 남지 않아야 한다", () => {
+test("a payload character absent from the text is dropped, not left unanchored", () => {
   const junkPayload = {
     ...PAYLOAD,
     characters: [

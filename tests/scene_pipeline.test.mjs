@@ -23,7 +23,7 @@ const MINI_NOVEL = `복녀는 가난한 집에서 자랐다. 복녀는 남편을
 
 // ── 장면 분할 ────────────────────────────────────────────────────────────────
 
-test("splitScenes: 문단을 목표 길이로 묶고 segment 인덱스를 보존한다", () => {
+test("splitScenes: groups paragraphs to the target length and keeps segment indexes", () => {
   const scenes = splitScenes(MINI_NOVEL, { targetChars: 60 });
   assert.ok(scenes.length >= 2);
   assert.equal(scenes[0].index, 1);
@@ -34,7 +34,7 @@ test("splitScenes: 문단을 목표 길이로 묶고 segment 인덱스를 보존
   }
 });
 
-test("splitScenes: 아주 긴 단일 문단도 분할된다", () => {
+test("splitScenes: splits even a single very long paragraph", () => {
   const longParagraph = "그는 걸었다. ".repeat(500);
   const scenes = splitScenes(longParagraph, { targetChars: 300 });
   assert.ok(scenes.length > 1);
@@ -43,14 +43,14 @@ test("splitScenes: 아주 긴 단일 문단도 분할된다", () => {
   }
 });
 
-test("splitScenes: 기본 설정에서도 긴 단편을 충분한 분석 청크로 나눈다", () => {
+test("splitScenes: default settings still cut a long story into enough chunks", () => {
   const shortStory = "그는 오래된 집을 나섰다. 새로운 사건이 시작되었다. ".repeat(200);
   const scenes = splitScenes(shortStory);
   assert.ok(scenes.length >= 6);
   assert.ok(scenes.every((scene) => scene.text.length <= 1000));
 });
 
-test("서버와 브라우저가 긴 문단의 segment 경계를 동일하게 계산한다", () => {
+test("server and browser compute the same segment boundaries for a long paragraph", () => {
   const text = "그는 오래된 집을 나섰다. 새로운 사건이 시작되었다. ".repeat(120);
   const serverSegments = splitSegments(text).segments;
   const browserSegments = analyzeNovel({
@@ -66,7 +66,7 @@ test("서버와 브라우저가 긴 문단의 segment 경계를 동일하게 계
   assert.ok(browserSegments.length >= 3);
 });
 
-test("splitLongText: 문장 경계에서 자른다", () => {
+test("splitLongText: cuts at a sentence boundary", () => {
   const text = "첫 문장이다. 둘째 문장이다. 셋째 문장이다.";
   const chunks = splitLongText(text, 15);
   assert.ok(chunks.length >= 2);
@@ -75,12 +75,12 @@ test("splitLongText: 문장 경계에서 자른다", () => {
 
 // ── 토큰 예산 ────────────────────────────────────────────────────────────────
 
-test("estimateTokens: 한국어를 보수적으로 추정한다", () => {
+test("estimateTokens: estimates Korean conservatively", () => {
   assert.ok(estimateTokens("가나다라마") >= 5);
   assert.ok(estimateTokens("abcde") <= 3);
 });
 
-test("fitsBudget: num_ctx의 60%를 초과하면 거부한다", () => {
+test("fitsBudget: rejects a prompt over 60% of num_ctx", () => {
   assert.equal(fitsBudget("짧은 프롬프트", 8192), true);
   const huge = "가".repeat(10000);
   assert.equal(fitsBudget(huge, 8192), false);
@@ -88,7 +88,7 @@ test("fitsBudget: num_ctx의 60%를 초과하면 거부한다", () => {
 
 // ── evidence 검증·병합 ───────────────────────────────────────────────────────
 
-test("verifyEvidence: 원문 인용은 통과, 변형·외부 인용은 거부", () => {
+test("verifyEvidence: accepts a real quote and rejects altered or foreign ones", () => {
   const scene = "복녀는 남편을 따라 칠성문 밖 빈민굴로 왔다.";
   assert.equal(verifyEvidence("칠성문 밖 빈민굴", scene), true);
   assert.equal(verifyEvidence("복녀는  남편을", scene), true); // 공백 차이는 허용
@@ -96,7 +96,7 @@ test("verifyEvidence: 원문 인용은 통과, 변형·외부 인용은 거부",
   assert.equal(verifyEvidence("", scene), false);
 });
 
-test("EntityMerger: 이름 정규화 병합·별칭 누적·합의 confidence 상향", () => {
+test("EntityMerger: merges by normalized name, accumulates aliases and raises agreed confidence", () => {
   const merger = new EntityMerger();
   merger.add({ name: "복녀", aliases: ["복녀는"], confidence: 0.6, evidence: "복녀는" }, 1);
   merger.add({ name: "복 녀", aliases: ["그녀"], confidence: 0.7, description: "가난한 집 딸" }, 2);
@@ -115,7 +115,7 @@ test("EntityMerger: 이름 정규화 병합·별칭 누적·합의 confidence �
   assert.ok(wang.confidence > 0.5);
 });
 
-test("isAllowedRelation: 화이트리스트 밖 관계를 거부한다", () => {
+test("isAllowedRelation: rejects a relation outside the whitelist", () => {
   assert.equal(isAllowedRelation("character", "character", "loves"), true);
   assert.equal(isAllowedRelation("character", "event", "participates_in"), true);
   assert.equal(isAllowedRelation("character", "character", "teleports_to"), false);
@@ -146,7 +146,7 @@ function entitiesFor(sceneText) {
   return { characters, locations };
 }
 
-test("runScenePipeline: 장면별 추출을 병합하고 진단을 남긴다", async () => {
+test("runScenePipeline: merges per-scene extraction and records diagnostics", async () => {
   const progress = [];
   const client = scriptedClient((args) => {
     const isEntities = args.prompt.includes("인물과 장소만 추출");
@@ -226,7 +226,7 @@ test("runScenePipeline: 장면별 추출을 병합하고 진단을 남긴다", a
   assert.ok(progress.some((p) => p.stage === "relations"));
 });
 
-test("runScenePipeline: 원문에 없는 evidence는 confidence가 강등된다", async () => {
+test("runScenePipeline: evidence absent from the source demotes confidence", async () => {
   const client = scriptedClient((args) => {
     if (args.prompt.includes("인물과 장소만 추출")) {
       return {
@@ -246,7 +246,7 @@ test("runScenePipeline: 원문에 없는 evidence는 confidence가 강등된다"
   assert.ok(result.payload.characters[0].confidence < 0.9);
 });
 
-test("runScenePipeline: 일부 장면 실패는 전체 실패가 아니다", async () => {
+test("runScenePipeline: some failed scenes are not a total failure", async () => {
   let entityCalls = 0;
   const client = scriptedClient((args) => {
     if (args.prompt.includes("인물과 장소만 추출")) {
@@ -271,7 +271,7 @@ test("runScenePipeline: 일부 장면 실패는 전체 실패가 아니다", asy
   assert.ok(result.payload.characters.length > 0);
 });
 
-test("runScenePipeline: 첫 장면부터 연결 실패면 구조화 오류를 반환한다", async () => {
+test("runScenePipeline: a connection failure on the first scene returns a structured error", async () => {
   const client = scriptedClient(() => ({
     ok: false,
     error_code: "CONNECTION_FAILED",
@@ -283,7 +283,7 @@ test("runScenePipeline: 첫 장면부터 연결 실패면 구조화 오류를 �
   assert.equal(result.error.error_code, "CONNECTION_FAILED");
 });
 
-test("runScenePipeline: PARSE_FAILED는 1회 재시도한다", async () => {
+test("runScenePipeline: retries PARSE_FAILED once", async () => {
   let attempts = 0;
   const client = scriptedClient((args) => {
     if (args.prompt.includes("인물과 장소만 추출")) {
@@ -299,7 +299,7 @@ test("runScenePipeline: PARSE_FAILED는 1회 재시도한다", async () => {
   assert.equal(result.diagnostics.scenes_failed.length, 0);
 });
 
-test("runScenePipeline: 숫자가 아닌 frame confidence도 기본값 아래로 강등된다", async () => {
+test("runScenePipeline: a non-numeric frame confidence is demoted below the default", async () => {
   // 강등값이 문자열이면 뒤따르는 clampNumber가 NaN → 기본값 0.6으로 되살려
   // 강등이 사라진다. 기본값과 구별되는 값이어야 검수 화면에서 걸러진다.
   for (const confidence of ["high", undefined, null]) {
@@ -322,7 +322,7 @@ test("runScenePipeline: 숫자가 아닌 frame confidence도 기본값 아래로
   }
 });
 
-test("runScenePipeline: state_changes는 문자열 enum 채널로 강등된다", async () => {
+test("runScenePipeline: state_changes are demoted on the string enum channel", async () => {
   const client = scriptedClient((args) => {
     if (args.prompt.includes("인물과 장소만 추출")) {
       return { ok: true, data: { characters: [{ name: "복녀", evidence: "복녀는 가난한 집에서" }], locations: [] } };
@@ -339,7 +339,7 @@ test("runScenePipeline: state_changes는 문자열 enum 채널로 강등된다",
   assert.equal(result.payload.state_changes[0].confidence, "weak");
 });
 
-test("runScenePipeline: 배열이어야 할 자리에 다른 값이 와도 죽지 않는다", async () => {
+test("runScenePipeline: survives a non-array where an array was expected", async () => {
   const client = scriptedClient(() => ({
     ok: true,
     data: { characters: 5, locations: { a: 1 }, event_frames: "x", state_changes: 7 }
@@ -349,7 +349,7 @@ test("runScenePipeline: 배열이어야 할 자리에 다른 값이 와도 죽�
   assert.equal(result.error.error_code, "EMPTY_RESULT");
 });
 
-test("runScenePipeline: 요청이 취소되면 남은 장면을 돌리지 않는다", async () => {
+test("runScenePipeline: an aborted request stops before the remaining scenes", async () => {
   // 상세 분석은 장면당 두 번 호출한다. 화면을 닫은 사용자를 위해 끝까지 돌리면
   // Ollama가 그만큼 묶인다. 결과는 error여야 호출부가 부분 결과를 캐시하지 않는다.
   const controller = new AbortController();
@@ -374,7 +374,7 @@ test("runScenePipeline: 요청이 취소되면 남은 장면을 돌리지 않는
   assert.ok(client.calls < scenes.length * 2, `취소 후에도 ${client.calls}회 호출했다`);
 });
 
-test("runScenePipeline: signal이 없으면 기존대로 끝까지 실행한다", async () => {
+test("runScenePipeline: without a signal it runs to completion as before", async () => {
   const client = scriptedClient((args) => {
     if (args.prompt.includes("인물과 장소만 추출")) {
       return { ok: true, data: { characters: [{ name: "복녀", evidence: "복녀는 가난한 집에서" }], locations: [] } };

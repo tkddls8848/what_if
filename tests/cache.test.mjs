@@ -12,7 +12,7 @@ function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "novel-if-cache-"));
 }
 
-test("같은 입력은 같은 키, 텍스트·모델·버전이 다르면 다른 키", () => {
+test("the same input yields the same key; text, model or version changes it", () => {
   const base = { text: "원문", model: "qwen3.5:4b", promptVersion: "scene-v1" };
   assert.equal(makeKey(base), makeKey({ ...base }));
   assert.notEqual(makeKey(base), makeKey({ ...base, text: "다른 원문" }));
@@ -20,7 +20,7 @@ test("같은 입력은 같은 키, 텍스트·모델·버전이 다르면 다른
   assert.notEqual(makeKey(base), makeKey({ ...base, promptVersion: "scene-v2" }));
 });
 
-test("write/read 왕복과 미존재 키", () => {
+test("write/read round-trips and a missing key returns null", () => {
   const dir = tmpDir();
   const key = makeKey({ text: "t", model: "m", promptVersion: "v" });
   assert.equal(readCache(key, dir), null);
@@ -31,7 +31,7 @@ test("write/read 왕복과 미존재 키", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("손상된 캐시 파일은 miss로 처리된다", () => {
+test("a corrupted cache file is treated as a miss", () => {
   const dir = tmpDir();
   const key = makeKey({ text: "t2", model: "m", promptVersion: "v" });
   fs.mkdirSync(dir, { recursive: true });

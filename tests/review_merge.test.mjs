@@ -35,7 +35,7 @@ function referencesOf(analysis, characterId) {
   };
 }
 
-test("여편네를 복녀로 병합하면 mention과 서사 시간이 실제 데이터 기준으로 갱신된다", () => {
+test("merging an alias into a character updates mentions and narrative time from real data", () => {
   const analysis = analyzeGamja();
   const source = characterNamed(analysis, "여편네");
   const target = characterNamed(analysis, "복녀");
@@ -82,7 +82,7 @@ test("여편네를 복녀로 병합하면 mention과 서사 시간이 실제 데
   assert.ok(analysis.diagnostics.audit, "refreshNarrativeTime이 감사 결과도 갱신해야 한다");
 });
 
-test("분리는 여편네 병합의 mention·사건 참조·서사 시간을 되돌린다", () => {
+test("splitting restores the mentions, event links and narrative time of the merge", () => {
   const analysis = analyzeGamja();
   const source = characterNamed(analysis, "여편네");
   const target = characterNamed(analysis, "복녀");
