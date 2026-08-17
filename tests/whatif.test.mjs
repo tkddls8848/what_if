@@ -97,6 +97,31 @@ test("normalizeBranch keeps generated facts separate from canon", () => {
   assert.equal(analysis.branches.length, 1);
 });
 
+test("state change anchors to the event the model pointed at, not the array slot", () => {
+  // summary가 빈 사건은 걸러지므로 after_event_order를 배열 인덱스로 쓰면
+  // 상태 변화가 한 칸씩 밀려 엉뚱한 사건에 붙는다.
+  const analysis = analyzeSample();
+  const actor = analysis.characters[0].canonical_name;
+  const event = (summary) => ({ type: "movement", summary, characters: [actor] });
+  const build = (events, after_event_order) => normalizeBranch(
+    analysis,
+    { events, state_changes: [{ character: actor, mental_state: "s", after_event_order }] },
+    { forkSegment: 20, premise: "p", model: "m" }
+  );
+  const anchored = (branch) =>
+    branch.events.find((item) => item.event_id === branch.states[0].after_event_id)?.summary;
+
+  // 앞쪽 사건이 걸러져도 모델이 지목한 2번 사건에 붙어야 한다
+  assert.equal(anchored(build([event(""), event("B"), event("C"), event("D")], 2)), "B");
+  // 중간이 걸러진 경우도 마찬가지
+  assert.equal(anchored(build([event("A"), event(""), event("C")], 3)), "C");
+  // 걸러진 사건 자체를 지목하면 그보다 앞선 가장 가까운 사건에 붙인다
+  assert.equal(anchored(build([event("A"), event(""), event("C")], 2)), "A");
+  // 범위를 벗어나거나 누락되면 마지막 사건에 붙인다(기존 동작)
+  assert.equal(anchored(build([event("A"), event("B")], 99)), "B");
+  assert.equal(anchored(build([event("A"), event("B")], undefined)), "B");
+});
+
 test("characters unknown at the fork are dropped and reported", () => {
   const analysis = analyzeSample();
   const at = 20;
@@ -224,27 +249,3 @@ test("the rubric is defined for humans, not scored automatically", () => {
   });
 });
 
-test("state change anchors to the event the model pointed at, not the array slot", () => {
-  // summary가 빈 사건은 걸러지므로 after_event_order를 배열 인덱스로 쓰면
-  // 상태 변화가 한 칸씩 밀려 엉뚱한 사건에 붙는다.
-  const analysis = analyzeSample();
-  const actor = analysis.characters[0].canonical_name;
-  const event = (summary) => ({ type: "movement", summary, characters: [actor] });
-  const build = (events, after_event_order) => normalizeBranch(
-    analysis,
-    { events, state_changes: [{ character: actor, mental_state: "s", after_event_order }] },
-    { forkSegment: 20, premise: "p", model: "m" }
-  );
-  const anchored = (branch) =>
-    branch.events.find((item) => item.event_id === branch.states[0].after_event_id)?.summary;
-
-  // 앞쪽 사건이 걸러져도 모델이 지목한 2번 사건에 붙어야 한다
-  assert.equal(anchored(build([event(""), event("B"), event("C"), event("D")], 2)), "B");
-  // 중간이 걸러진 경우도 마찬가지
-  assert.equal(anchored(build([event("A"), event(""), event("C")], 3)), "C");
-  // 걸러진 사건 자체를 지목하면 그보다 앞선 가장 가까운 사건에 붙인다
-  assert.equal(anchored(build([event("A"), event(""), event("C")], 2)), "A");
-  // 범위를 벗어나거나 누락되면 마지막 사건에 붙인다(기존 동작)
-  assert.equal(anchored(build([event("A"), event("B")], 99)), "B");
-  assert.equal(anchored(build([event("A"), event("B")], undefined)), "B");
-});

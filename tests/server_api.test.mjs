@@ -90,6 +90,36 @@ function startFakeOllama() {
   });
 }
 
+/** 지연 응답 fake Ollama. 중단을 관찰하려면 호출이 진행 중이어야 한다. */
+function startSlowOllama(delayMs) {
+  let count = 0;
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      if (req.url === "/api/tags") {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ models: [] }));
+        return;
+      }
+      count += 1;
+      setTimeout(() => {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({
+          response: JSON.stringify(entitiesFor("복녀 빈민굴")),
+          prompt_eval_count: 1,
+          eval_count: 1
+        }));
+      }, delayMs);
+    });
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve({ server, url: `http://127.0.0.1:${server.address().port}`, count: () => count });
+    });
+  });
+}
+
 function startApp() {
   return new Promise((resolve) => {
     const server = app.listen(0, "127.0.0.1", () => {
@@ -176,6 +206,47 @@ test("POST /api/analyze/ollama (SSE): progress와 done 이벤트를 보낸다", 
   const done = events.find((item) => item.event === "done");
   assert.ok(done);
   assert.ok(done.data.analysis.characters.length > 0);
+});
+
+test("POST /api/analyze/ollama: 클라이언트가 끊으면 남은 장면을 돌리지 않는다", async () => {
+  // 장면당 Ollama 2회라 한 요청이 100회를 넘길 수 있다. 화면을 닫은 사용자를 위해
+  // 끝까지 돌리면 다음 요청이 그만큼 밀린다. 부분 결과를 캐시에 남겨서도 안 된다.
+  const slow = await startSlowOllama(60);
+  const previousUrl = process.env.OLLAMA_URL;
+  process.env.OLLAMA_URL = slow.url;
+  process.env.NOVEL_IF_CACHE = "1";
+
+  // 문단 하나가 곧 장면 하나가 되도록 충분히 길게 — 짧으면 끊기 전에 끝나 버린다
+  const paragraph = "복녀는 칠성문 밖 빈민굴로 갔다. 그곳에서 왕 서방을 만났다. ".repeat(30).slice(0, 900);
+  const longText = Array.from({ length: 20 }, (_, i) => `${i}. ${paragraph}`).join("\n\n");
+  const before = fs.readdirSync(CACHE_DIR).length;
+
+  try {
+    const controller = new AbortController();
+    const request = fetch(`${api.url}/api/analyze/ollama`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ text: longText, model: "qwen3.5:4b", force: true }),
+      signal: controller.signal
+    }).catch(() => null);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const atAbort = slow.count();
+    assert.ok(atAbort > 0, "끊기 전에 호출이 시작되어야 한다");
+    assert.ok(atAbort < 40, "끊기 전에 전체가 끝나면 이 테스트는 아무것도 검증하지 못한다");
+
+    controller.abort();
+    await request;
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    // 진행 중이던 호출 1건은 끝나게 두고 그 다음으로 넘어가지 않는다
+    assert.ok(slow.count() - atAbort <= 1, `끊은 뒤에도 ${slow.count() - atAbort}회 더 호출했다`);
+    assert.equal(fs.readdirSync(CACHE_DIR).length, before, "중단된 요청이 부분 결과를 캐시했다");
+  } finally {
+    process.env.NOVEL_IF_CACHE = "0";
+    process.env.OLLAMA_URL = previousUrl;
+    slow.server.close();
+  }
 });
 
 test("캐시 활성 시 두 번째 요청은 hit, force는 우회한다", async () => {
@@ -268,4 +339,31 @@ test("Ollama 미기동이면 502와 CONNECTION_FAILED를 반환한다", async ()
   } finally {
     process.env.OLLAMA_URL = previous;
   }
+});
+
+test("GET /api/import/wikisource: 깨진 URL 인코딩은 400이고 서버는 살아 있다", async () => {
+  // decodeURIComponent가 던지면 Express 4는 async 핸들러의 rejection을 잡지 않아
+  // unhandled rejection으로 프로세스가 죽었다. 라우트 수준에서 고정한다.
+  for (const broken of ["%", "%E0%A4", "%zz", "%C3%28"]) {
+    const url = `https://ko.wikisource.org/wiki/${broken}`;
+    const response = await fetch(`${api.url}/api/import/wikisource?url=${encodeURIComponent(url)}`);
+    assert.equal(response.status, 400, `${broken}가 400이 아니다`);
+    const body = await response.json();
+    assert.equal(body.error_code, "INVALID_ARGUMENT");
+    assert.match(body.message, /URL 인코딩/u);
+  }
+
+  // 프로세스가 살아 있어야 다음 요청이 처리된다 — 크래시 회귀의 실질적 판정 기준
+  const alive = await fetch(`${api.url}/api/ollama/health`);
+  assert.equal(alive.status, 200);
+});
+
+test("GET /api/import/wikisource: 위키문헌 밖 호스트는 400으로 거부한다", async () => {
+  // 임의 URL을 받으면 이 서버가 열린 프록시가 된다.
+  for (const url of ["https://example.com/wiki/x", "http://ko.wikisource.org/wiki/감자", "file:///etc/passwd"]) {
+    const response = await fetch(`${api.url}/api/import/wikisource?url=${encodeURIComponent(url)}`);
+    assert.equal(response.status, 400, `${url}이 거부되지 않았다`);
+  }
+  const missing = await fetch(`${api.url}/api/import/wikisource`);
+  assert.equal(missing.status, 400);
 });

@@ -194,6 +194,22 @@ test("meta sidecar overrides title and rights", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("document_id never escapes the library directory", () => {
+  // get()이 document_id로 경로를 조합하므로 구분자가 들어오면 라이브러리 밖을 읽을 수 있다.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "novel-if-traversal-"));
+  fs.copyFileSync(path.join(REPO, "texts", "gamja.txt"), path.join(dir, "inside.txt"));
+  fs.writeFileSync(path.join(path.dirname(dir), "outside.txt"), "라이브러리 밖 파일", "utf8");
+  const restricted = createLibrary({ dir });
+
+  ["../outside", "..\outside", "inside/../../outside", "..", "."].forEach((id) => {
+    assert.equal(restricted.get(id), null, `${id}가 라이브러리 밖을 읽었다`);
+  });
+  assert.ok(restricted.get("inside"), "정상 document_id는 그대로 동작해야 한다");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(path.join(path.dirname(dir), "outside.txt"), { force: true });
+});
+
 test("whatif_seed exposes nothing from after the fork", () => {
   const at = 20;
   const { analysis } = library.get("gamja");
@@ -232,18 +248,3 @@ test("mcp/ stays an adapter: no analysis rules live here", () => {
   assert.ok(adapters[1].includes('from "../src/core/asof.js"'), "도구는 asOf를 재사용해야 한다");
 });
 
-test("document_id never escapes the library directory", () => {
-  // get()이 document_id로 경로를 조합하므로 구분자가 들어오면 라이브러리 밖을 읽을 수 있다.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "novel-if-traversal-"));
-  fs.copyFileSync(path.join(REPO, "texts", "gamja.txt"), path.join(dir, "inside.txt"));
-  fs.writeFileSync(path.join(path.dirname(dir), "outside.txt"), "라이브러리 밖 파일", "utf8");
-  const restricted = createLibrary({ dir });
-
-  ["../outside", "..\outside", "inside/../../outside", "..", "."].forEach((id) => {
-    assert.equal(restricted.get(id), null, `${id}가 라이브러리 밖을 읽었다`);
-  });
-  assert.ok(restricted.get("inside"), "정상 document_id는 그대로 동작해야 한다");
-
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(path.join(path.dirname(dir), "outside.txt"), { force: true });
-});
