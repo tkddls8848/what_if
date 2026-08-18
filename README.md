@@ -88,7 +88,7 @@ MCP 서버는 `mcp/server.js`입니다. `NOVEL_IF_LIBRARY`를 지정하지 않�
 ```text
 server.js                 Express 서버와 API
 src/analyzer.js           규칙 분석과 Ollama 결과 병합
-src/core/                 as-of, 조합 질의, 감사, 근거, EPUB, 분기, 출력, 정규화
+src/core/                 as-of, 조합 질의, 요약, 감사, 근거, EPUB, 분기, 출력, 정규화
 src/server/               Ollama 장면 파이프라인, what-if 생성, 위키문헌
 src/app/                  브라우저 상태·이벤트·뷰
 mcp/                      읽기 전용 MCP 어댑터

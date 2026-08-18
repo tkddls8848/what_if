@@ -16,6 +16,7 @@
  */
 import { asOf, currentStateOf, isKnownAt, lastSegmentIndex, resolveTime, segmentIndexOf } from "../src/core/asof.js";
 import { evidenceOf, findFact } from "../src/core/evidence.js";
+import { recapAt } from "../src/core/recap.js";
 import { branchSeed, forkCandidates } from "../src/core/whatif.js";
 import { isRedistributable } from "./library.js";
 
@@ -234,34 +235,7 @@ export function evidenceForFact(library, { document_id, fact_id, as_of }) {
 export function arcSummary(library, { document_id, as_of }) {
   const { analysis } = requireDocument(library, document_id);
   const at = requireAsOf(analysis, as_of);
-  const scoped = asOf(analysis, at);
-
-  const eventTypes = {};
-  scoped.events.forEach((event) => { eventTypes[event.type] = (eventTypes[event.type] || 0) + 1; });
-
-  const characters = scoped.characters.map((character) => {
-    const state = currentStateOf(analysis, character.character_id, at);
-    const transitions = analysis.states
-      .filter((item) => item.character_id === character.character_id && isKnownAt(item, at))
-      .length;
-    return {
-      name: character.canonical_name,
-      first_seen_segment: character.valid_from,
-      state_records: transitions,
-      current_mental_state: state?.mental_state || "",
-      current_physical_state: state?.physical_state || ""
-    };
-  });
-
-  return {
-    document_id,
-    as_of: at,
-    progress: { segment: at, of: lastSegmentIndex(analysis) },
-    event_type_counts: eventTypes,
-    characters,
-    audit: scoped.audit.counts,
-    note: "이 요약은 추출된 사실의 집계다. 원문을 재서술하거나 생성하지 않는다."
-  };
+  return { document_id, ...recapAt(analysis, at) };
 }
 
 /**

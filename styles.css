@@ -486,6 +486,97 @@ input[type="range"] {
   font-size: 12px;
 }
 
+/* 읽은 데까지의 요약. Reader 안에 접어 두고, 펼치면 그 시점의 집계를 한 번에 본다. */
+.recap-panel {
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.recap-panel > summary {
+  padding: 9px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.86rem;
+  user-select: none;
+}
+
+.recap-panel > summary:hover {
+  color: var(--ink);
+}
+
+.recap-panel > div {
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.recap-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.recap-types,
+.recap-characters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recap-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recap-types li {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.recap-types b {
+  color: var(--ink);
+}
+
+.recap-characters {
+  display: grid;
+  gap: 6px;
+}
+
+.recap-characters li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 9px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-3);
+  font-size: 0.82rem;
+}
+
+.recap-meta {
+  color: var(--muted-2);
+  font-size: 0.75rem;
+}
+
+.recap-state {
+  color: var(--accent-2);
+  font-size: 0.78rem;
+}
+
+.recap-note {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.72rem;
+}
+
 .segment-list {
   flex: 1;
   overflow: auto;

@@ -65,6 +65,7 @@ export const els = {
   readerPosition: $("#readerPosition"),
   readerPositionLabel: $("#readerPositionLabel"),
   spoilerToggle: $("#spoilerToggle"),
+  recapPanel: $("#recapPanel"),
   segmentList: $("#segmentList"),
   eventTypeFilter: $("#eventTypeFilter"),
   statusFilter: $("#statusFilter"),

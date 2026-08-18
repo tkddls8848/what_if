@@ -1,5 +1,6 @@
 import { renderRoute, activateRoute, isCheckRoute } from "./view/router.js";
 import { renderReader, renderFilterOptions } from "./view/reader.js";
+import { renderRecap } from "./view/recap.js";
 import { renderGraph, renderInspector } from "./view/map.js";
 import { renderTimeline } from "./view/timeline.js";
 import { renderCharacters } from "./view/characters.js";
@@ -21,6 +22,7 @@ export {
 export function renderAll() {
   renderRoute();
   renderReader();
+  renderRecap();
   renderFilterOptions();
   renderGraph();
   renderInspector();
