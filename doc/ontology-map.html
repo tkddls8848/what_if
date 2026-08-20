@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novel IF 온톨로지 도면</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --bg: #E8E9E4;
+    --surface: #F7F7F4;
+    --surface-2: #EFEFEA;
+    --ink: #14181B;
+    --ink-soft: #4F585F;
+    --ink-faint: #79838B;
+    --rule: #C7CAC3;
+    --accent: #17506B;
+    --accent-tint: #D8E4EB;
+    --ochre: #856318;
+    --red: #99382A;
+
+    --font-display: "Gowun Batang", "Nanum Myeongjo", Georgia, serif;
+    --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --measure: 66ch;
+    --plate: 1180px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1316;
+      --surface: #171C21;
+      --surface-2: #1D242A;
+      --ink: #E3E7E9;
+      --ink-soft: #97A3AB;
+      --ink-faint: #6E7B84;
+      --rule: #2C343B;
+      --accent: #82C3E0;
+      --accent-tint: #1B3743;
+      --ochre: #D9B25E;
+      --red: #E28675;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0F1316;
+    --surface: #171C21;
+    --surface-2: #1D242A;
+    --ink: #E3E7E9;
+    --ink-soft: #97A3AB;
+    --ink-faint: #6E7B84;
+    --rule: #2C343B;
+    --accent: #82C3E0;
+    --accent-tint: #1B3743;
+    --ochre: #D9B25E;
+    --red: #E28675;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 0;
+    padding: 0 24px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: var(--plate);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  p, li { max-width: var(--measure); }
+
+  a { color: var(--accent); }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* ── 표제부 ─────────────────────────────────── */
+  .titleblock {
+    margin-top: 56px;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .titleblock h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(30px, 4.4vw, 46px);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0;
+    padding: 30px 30px 22px;
+    max-width: 22ch;
+  }
+  .titleblock .lede {
+    margin: 0;
+    padding: 0 30px 30px;
+    color: var(--ink-soft);
+    font-size: 17px;
+    max-width: 62ch;
+  }
+  .meta {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--rule);
+  }
+  .meta div {
+    padding: 14px 18px;
+    border-right: 1px solid var(--rule);
+  }
+  .meta div:last-child { border-right: 0; }
+  .meta dt, .meta .k {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    display: block;
+  }
+  .meta .v {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+    display: block;
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  @media (max-width: 720px) {
+    .meta { grid-template-columns: repeat(2, 1fr); }
+    .meta div:nth-child(2) { border-right: 0; }
+    .meta div:nth-child(3), .meta div:nth-child(4) { border-top: 1px solid var(--rule); }
+  }
+
+  /* ── 계수 ───────────────────────────────────── */
+  .counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .counts div { background: var(--surface); padding: 18px 20px; }
+  .counts .n {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 30px;
+    line-height: 1;
+    color: var(--ink);
+    display: block;
+  }
+  .counts .n.hot { color: var(--accent); }
+  .counts .l {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    display: block;
+    margin-top: 8px;
+  }
+
+  /* ── 섹션 ───────────────────────────────────── */
+  section > h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 27px;
+    line-height: 1.3;
+    text-wrap: balance;
+    margin: 0 0 6px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin: 0 0 10px;
+  }
+  section > p { margin: 0 0 18px; color: var(--ink-soft); }
+  section > p strong { color: var(--ink); font-weight: 600; }
+
+  /* ── 도면 ───────────────────────────────────── */
+  figure.plate {
+    margin: 22px 0 0;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .plate .scroller { overflow-x: auto; padding: 26px 26px 14px; }
+  .plate svg { display: block; width: 100%; min-width: 720px; height: auto; color: var(--ink-soft); }
+  .plate figcaption {
+    border-top: 1px solid var(--rule);
+    padding: 14px 26px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    max-width: none;
+  }
+  .plate figcaption b { color: var(--ink); font-weight: 600; }
+
+  .plate .box { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1.2; }
+  .plate .box-accent { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.5; }
+  .plate .frame { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 4 5; }
+  .plate .edge { fill: none; stroke: var(--ink-soft); stroke-width: 1.3; }
+  .plate .edge-supplied { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  .plate .edge-empty { fill: none; stroke: var(--ink-faint); stroke-width: 1.3; stroke-dasharray: 5 4; }
+  .plate .edge-note { fill: none; stroke: var(--ochre); stroke-width: 1.6; }
+  .plate .axis { stroke: var(--ink-soft); stroke-width: 1.2; }
+  .plate .tick { stroke: var(--ink-faint); stroke-width: 1; }
+  .plate .band { fill: var(--rule); opacity: 0.3; }
+  .plate .bar { fill: var(--accent); opacity: 0.85; }
+  .plate .bar-mute { fill: var(--ink-faint); opacity: 0.55; }
+
+  .plate text { font-family: var(--font-body); }
+  .plate .t { fill: var(--ink); font-size: 13.5px; font-weight: 500; }
+  .plate .t-sub { fill: var(--ink-soft); font-size: 11px; }
+  .plate .t-mono { font-family: var(--font-mono); fill: var(--ink-soft); font-size: 11px; }
+  .plate .t-mono-ink { font-family: var(--font-mono); fill: var(--ink); font-size: 12px; }
+  .plate .t-band { font-family: var(--font-mono); fill: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.14em; }
+  .plate .t-accent { fill: var(--accent); font-size: 12px; font-weight: 600; font-family: var(--font-mono); }
+  .plate .t-ochre { fill: var(--ochre); font-size: 11px; font-family: var(--font-mono); }
+  .plate .t-red { fill: var(--red); font-size: 13px; font-weight: 600; }
+  .plate .t-ok { fill: var(--accent); font-size: 15px; font-weight: 700; }
+  .plate .t-no { fill: var(--ink-faint); font-size: 15px; font-weight: 700; }
+  .plate .m-default polygon { fill: var(--ink-soft); }
+  .plate .m-accent polygon { fill: var(--accent); }
+  .plate .m-faint polygon { fill: var(--ink-faint); }
+  .plate .m-ochre polygon { fill: var(--ochre); }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 22px;
+    padding: 14px 26px;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 9px; }
+  .legend i { display: inline-block; width: 30px; height: 0; border-top-width: 2px; }
+  .legend i.solid { border-top: 2.4px solid var(--accent); }
+  .legend i.dashed { border-top: 1.6px dashed var(--ink-faint); }
+  .legend i.ochre { border-top: 2px solid var(--ochre); }
+
+  /* ── 표 ─────────────────────────────────────── */
+  .tablewrap { overflow-x: auto; margin-top: 22px; border: 1px solid var(--rule); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 660px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    background: var(--surface-2);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  tfoot td { border-top: 1px solid var(--ink-soft); border-bottom: 0; font-weight: 600; background: var(--surface-2); }
+  td.num, th.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+  td code { color: var(--ink-soft); }
+  .supplied { color: var(--accent); font-weight: 600; }
+
+  /* ── 클래스 카드 ────────────────────────────── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin-top: 22px;
+  }
+  .card { background: var(--surface); padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .card h3 { font-family: var(--font-mono); font-size: 14px; font-weight: 500; margin: 0; color: var(--ink); }
+  .card .fields { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); line-height: 1.65; margin: 0; word-break: break-word; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 6px; }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 3px 7px;
+    border: 1px solid var(--rule);
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  .tag.anchor { border-color: var(--accent); color: var(--accent); }
+  .tag.time { border-color: var(--ochre); color: var(--ochre); }
+
+  /* ── 관측 ───────────────────────────────────── */
+  .findings { display: flex; flex-direction: column; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 22px; }
+  .finding { background: var(--surface); padding: 20px 24px; display: grid; grid-template-columns: 44px 1fr; gap: 18px; }
+  .finding .mark { font-family: var(--font-mono); font-size: 12px; color: var(--accent); padding-top: 4px; }
+  .finding h3 { font-size: 16.5px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+  .finding p { margin: 0; color: var(--ink-soft); font-size: 14.5px; max-width: 74ch; }
+  .finding p + p { margin-top: 8px; }
+  .finding code { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header class="titleblock">
+    <h1>Novel IF 온톨로지 도면</h1>
+    <p class="lede">저장소에 지금 존재하는 데이터 계약을 코드에서 그대로 옮긴 것이다. 새로 제안한 구조가 아니라 <b>현재 상태</b>이며, 모든 수치는 <code>src/analyzer.js</code>·<code>src/config.js</code>·<code>src/server/prompts.js</code>에서 센 값이다.</p>
+    <div class="meta">
+      <div><span class="k">대상</span><span class="v">tkddls8848/what_if</span></div>
+      <div><span class="k">기준 문서</span><span class="v">doc/README.md §5</span></div>
+      <div><span class="k">기준 커밋</span><span class="v">a2986ac</span></div>
+      <div><span class="k">도면</span><span class="v">A · B · C</span></div>
+    </div>
+  </header>
+
+  <section aria-label="계수 요약">
+    <div class="counts">
+      <div><span class="n">11</span><span class="l">클래스</span></div>
+      <div><span class="n">31</span><span class="l">선언된 관계 타입</span></div>
+      <div><span class="n hot">3</span><span class="l">규칙 채널이 실제로 만드는 관계</span></div>
+      <div><span class="n">9</span><span class="l">사건 유형</span></div>
+      <div><span class="n">5</span><span class="l">status 상태</span></div>
+      <div><span class="n">6</span><span class="l">감사 제약</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 도면 A ══════════ -->
+  <section>
+    <p class="eyebrow">도면 A · 앵커 층</p>
+    <h2>모든 객체는 원문 문자 offset까지 내려간다</h2>
+    <p>이 구조의 뿌리는 클래스 계층이 아니라 <strong>좌표계</strong>다. <code>Segment</code>의 <code>char_start</code>/<code>char_end</code>가 원점이고, 상위 객체는 저마다의 앵커 필드로 그 좌표까지 내려가야 한다. 내려가지 못하는 항목은 <strong>병합과 응답에서 제거된다</strong>(설계 원칙 2). 온톨로지의 무결성 제약이 스키마가 아니라 이 게이트에 걸려 있다.</p>
+
+    <figure class="plate">
+      <div class="scroller">
+        <svg viewBox="0 0 1100 480" role="img" aria-label="서사 객체 다섯 종류가 각자의 앵커 필드를 통해 앵커 게이트를 지나 Document·Scene·Segment의 문자 offset 좌표계로 내려가는 구조도">
+          <defs>
+            <marker id="a1" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-default"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+            <marker id="a1o" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-ochre"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+            <marker id="a1f" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-faint"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+          </defs>
+
+          <text class="t-band" x="40" y="24">서사 객체</text>
+
+          <rect class="box" x="40"  y="40" width="156" height="58" rx="2"/>
+          <text class="t"     x="118" y="65" text-anchor="middle">Character</text>
+          <text class="t-sub" x="118" y="84" text-anchor="middle">인물</text>
+
+          <rect class="box" x="226" y="40" width="156" height="58" rx="2"/>
+          <text class="t"     x="304" y="65" text-anchor="middle">Location</text>
+          <text class="t-sub" x="304" y="84" text-anchor="middle">장소</text>
+
+          <rect class="box" x="412" y="40" width="156" height="58" rx="2"/>
+          <text class="t"     x="490" y="65" text-anchor="middle">Event</text>
+          <text class="t-sub" x="490" y="84" text-anchor="middle">사건 · 9유형</text>
+
+          <rect class="box" x="598" y="40" width="156" height="58" rx="2"/>
+          <text class="t"     x="676" y="65" text-anchor="middle">CharacterState</text>
+          <text class="t-sub" x="676" y="84" text-anchor="middle">인물 상태</text>
+
+          <rect class="box" x="784" y="40" width="156" height="58" rx="2"/>
+          <text class="t"     x="862" y="65" text-anchor="middle">Annotation</text>
+          <text class="t-sub" x="862" y="84" text-anchor="middle">시대 주석</text>
+
+          <line class="edge" x1="118" y1="98" x2="118" y2="174" marker-end="url(#a1)"/>
+          <text class="t-mono" x="126" y="142">mentions[]</text>
+          <line class="edge" x1="304" y1="98" x2="304" y2="174" marker-end="url(#a1)"/>
+          <text class="t-mono" x="312" y="142">mentions[]</text>
+          <line class="edge" x1="490" y1="98" x2="490" y2="174" marker-end="url(#a1)"/>
+          <text class="t-mono" x="498" y="142">source_span</text>
+          <line class="edge-note" x1="676" y1="98" x2="676" y2="174" marker-end="url(#a1o)"/>
+          <text class="t-ochre" x="684" y="142">segment_id</text>
+          <line class="edge" x1="862" y1="98" x2="862" y2="174" marker-end="url(#a1)"/>
+          <text class="t-mono" x="870" y="142">char_start / end</text>
+
+          <rect class="box-accent" x="40" y="180" width="900" height="54" rx="2"/>
+          <text class="t-accent" x="490" y="203" text-anchor="middle">앵커 게이트 — 설계 원칙 2</text>
+          <text class="t-sub"    x="490" y="223" text-anchor="middle">원문 span을 만들 수 없는 항목은 병합·응답에서 제외한다</text>
+
+          <line class="edge-empty" x1="940" y1="207" x2="960" y2="207" marker-end="url(#a1f)"/>
+          <rect class="frame" x="966" y="188" width="110" height="38" rx="2"/>
+          <text class="t-sub" x="1021" y="212" text-anchor="middle">제외</text>
+
+          <line class="edge" x1="118" y1="234" x2="118" y2="286" marker-end="url(#a1)"/>
+          <line class="edge" x1="304" y1="234" x2="304" y2="286" marker-end="url(#a1)"/>
+          <line class="edge" x1="490" y1="234" x2="490" y2="286" marker-end="url(#a1)"/>
+          <line class="edge-note" x1="676" y1="234" x2="676" y2="286" marker-end="url(#a1o)"/>
+          <line class="edge" x1="862" y1="234" x2="862" y2="286" marker-end="url(#a1)"/>
+
+          <rect class="frame" x="30" y="292" width="1000" height="170" rx="2"/>
+          <text class="t-mono-ink" x="44" y="313">Document</text>
+          <rect class="frame" x="44" y="322" width="972" height="112" rx="2"/>
+          <text class="t-mono" x="58" y="341">Scene — 챕터 경계(EPUB) 또는 균등 분할</text>
+
+          <rect class="box" x="66"  y="352" width="218" height="52" rx="2"/>
+          <text class="t-mono-ink" x="175" y="376" text-anchor="middle">Segment P001</text>
+          <text class="t-mono"     x="175" y="393" text-anchor="middle">char 0–812</text>
+
+          <rect class="box" x="304" y="352" width="218" height="52" rx="2"/>
+          <text class="t-mono-ink" x="413" y="376" text-anchor="middle">Segment P002</text>
+          <text class="t-mono"     x="413" y="393" text-anchor="middle">char 813–1490</text>
+
+          <rect class="box" x="542" y="352" width="218" height="52" rx="2"/>
+          <text class="t-mono-ink" x="651" y="376" text-anchor="middle">Segment P003</text>
+          <text class="t-mono"     x="651" y="393" text-anchor="middle">char 1491–2244</text>
+
+          <rect class="box" x="780" y="352" width="218" height="52" rx="2"/>
+          <text class="t-mono-ink" x="889" y="376" text-anchor="middle">Segment P00n</text>
+          <text class="t-mono"     x="889" y="393" text-anchor="middle">…</text>
+
+          <line class="axis" x1="66" y1="446" x2="998" y2="446"/>
+          <line class="tick" x1="66"  y1="441" x2="66"  y2="451"/>
+          <line class="tick" x1="300" y1="441" x2="300" y2="451"/>
+          <line class="tick" x1="534" y1="441" x2="534" y2="451"/>
+          <line class="tick" x1="766" y1="441" x2="766" y2="451"/>
+          <line class="tick" x1="998" y1="441" x2="998" y2="451"/>
+          <text class="t-mono" x="66"  y="436">char 0</text>
+          <text class="t-mono" x="998" y="436" text-anchor="end">char N — 전역 문자 offset</text>
+        </svg>
+      </div>
+      <figcaption><b>앵커 깊이는 균일하지 않다.</b> 파랑 네 갈래는 문자 offset까지 도달하지만, 황토색 <code>CharacterState</code>는 <code>segment_id</code>까지만 내려간다 — 상태에는 인용할 원문 구절이 없기 때문이다. <code>Relation</code>도 같은 깊이(<code>segment_ids[]</code>)에 머문다.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ══════════ 도면 B ══════════ -->
+  <section>
+    <p class="eyebrow">도면 B · 관계 스키마</p>
+    <h2>관계 그래프는 노드 3종, 선언 31개, 공급 3개다</h2>
+    <p><code>normalizeSchemaRelationType()</code>(<code class="mono">src/analyzer.js:777</code>)이 <code>(source_type, relation_type, target_type)</code> 조합을 검사하는 domain/range 테이블이다. 노드가 될 수 있는 타입은 <code>character</code>·<code>event</code>·<code>location</code> 셋뿐이며(<code class="mono">:772</code>), 그 위에 31개 관계 타입이 선언돼 있다. 규칙 채널이 실제로 만드는 것은 <strong>그중 3개</strong>다.</p>
+
+    <figure class="plate">
+      <div class="scroller">
+        <svg viewBox="0 0 1000 500" role="img" aria-label="Character·Event·Location 세 노드 사이의 관계 스키마. 실선 세 개는 규칙 채널이 실제로 생성하는 participates_in, appears_in, takes_place_at이고 점선은 선언만 되고 비어 있는 28개 타입이다">
+          <defs>
+            <marker id="a2" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-accent"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+            <marker id="a2f" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-faint"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+          </defs>
+
+          <path class="edge-empty" d="M130,90 C110,26 270,26 250,90" marker-end="url(#a2f)"/>
+          <text class="t-sub" x="190" y="18" text-anchor="middle">character → character · 12종 · 공급 없음</text>
+
+          <rect class="box" x="90" y="90" width="200" height="64" rx="2"/>
+          <text class="t"     x="190" y="118" text-anchor="middle">Character</text>
+          <text class="t-sub" x="190" y="138" text-anchor="middle">canonical_name · aliases</text>
+
+          <rect class="box" x="710" y="90" width="200" height="64" rx="2"/>
+          <text class="t"     x="810" y="118" text-anchor="middle">Location</text>
+          <text class="t-sub" x="810" y="138" text-anchor="middle">name · parent_location_id</text>
+
+          <rect class="box" x="400" y="320" width="200" height="64" rx="2"/>
+          <text class="t"     x="500" y="348" text-anchor="middle">Event</text>
+          <text class="t-sub" x="500" y="368" text-anchor="middle">type · summary · source_span</text>
+
+          <line class="edge-supplied" x1="290" y1="110" x2="702" y2="110" marker-end="url(#a2)"/>
+          <text class="t-accent" x="496" y="100" text-anchor="middle">appears_in</text>
+          <text class="t-sub"    x="496" y="134" text-anchor="middle">+ located_at · came_from · went_to · trapped_at · owns</text>
+
+          <path class="edge-supplied" d="M190,154 L190,352 L392,352" marker-end="url(#a2)"/>
+          <text class="t-accent" x="202" y="242">participates_in</text>
+          <text class="t-sub"    x="202" y="264">+ caused · witnessed · affected_by · investigated · escaped_from</text>
+
+          <path class="edge-supplied" d="M600,352 L810,352 L810,162" marker-end="url(#a2)"/>
+          <text class="t-accent" x="700" y="340" text-anchor="middle">takes_place_at</text>
+          <text class="t-sub"    x="700" y="372" text-anchor="middle">1종 전부 공급</text>
+
+          <path class="edge-empty" d="M440,384 C420,448 580,448 560,384" marker-end="url(#a2f)"/>
+          <text class="t-sub" x="500" y="472" text-anchor="middle">event → event · 6종 · 공급 없음 (caused_by · leads_to · happens_before …)</text>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i class="solid"></i>규칙 채널이 실제로 생성</span>
+        <span><i class="dashed"></i>계약에 선언만 되고 비어 있음</span>
+        <span><i class="ochre"></i>앵커가 segment까지만 (도면 A)</span>
+      </div>
+      <figcaption><b>인물 간 관계와 사건 간 인과는 규칙으로 만들지 않는다.</b> 근거 없이 만드느니 비운다는 설계 결정이며(<code>doc/README.md §5</code>), 유일한 공급원은 Ollama 관계 pass다. 그 채널은 아직 실측되지 않았다(<code>doc_nextsession §6</code> 미수행).</figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <caption class="mono" style="text-align:left; padding:12px 16px; color:var(--ink-faint); font-size:11px; letter-spacing:.12em; text-transform:uppercase;">domain → range 별 선언과 공급</caption>
+        <thead>
+          <tr>
+            <th>domain → range</th>
+            <th class="num">선언</th>
+            <th>규칙 채널 공급</th>
+            <th>선언만 (비어 있음)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>character → character</code></td>
+            <td class="num">12</td>
+            <td>—</td>
+            <td><code>knows, family_of, ally_of, enemy_of, protects, threatens, depends_on, suspects, loves, hides_from, changes_attitude_to, speaks_to</code></td>
+          </tr>
+          <tr>
+            <td><code>character → event</code></td>
+            <td class="num">6</td>
+            <td class="supplied"><code>participates_in</code></td>
+            <td><code>caused, witnessed, affected_by, investigated, escaped_from</code></td>
+          </tr>
+          <tr>
+            <td><code>character → location</code></td>
+            <td class="num">6</td>
+            <td class="supplied"><code>appears_in</code></td>
+            <td><code>located_at, came_from, went_to, trapped_at, owns</code></td>
+          </tr>
+          <tr>
+            <td><code>event → event</code></td>
+            <td class="num">6</td>
+            <td>—</td>
+            <td><code>caused_by, leads_to, happens_before, happens_after, reveals, contradicts</code></td>
+          </tr>
+          <tr>
+            <td><code>event → location</code></td>
+            <td class="num">1</td>
+            <td class="supplied"><code>takes_place_at</code></td>
+            <td>—</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr><td>합계</td><td class="num">31</td><td class="supplied">3</td><td>28</td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════ 도면 C ══════════ -->
+  <section>
+    <p class="eyebrow">도면 C · 시간 층</p>
+    <h2>같은 사실에 술어가 둘 있다 — KNOWN과 TRUE</h2>
+    <p>온톨로지에서 가장 특이한 축이다. 모든 시간 좌표는 segment index(1부터인 정수)이고, <code>valid_from</code>/<code>valid_to</code> 구간 위에서 <strong>두 개의 서로 다른 술어</strong>가 정의된다. 퇴장한 인물과 끝난 관계는 여전히 KNOWN이다 — 독자가 이미 읽었기 때문이다. 판정은 <code>src/core/asof.js</code>의 <code>asOf()</code> 한 곳에만 있다.</p>
+
+    <figure class="plate">
+      <div class="scroller">
+        <svg viewBox="0 0 1240 300" role="img" aria-label="읽은 위치 t=P100에서 세 항목의 KNOWN과 TRUE 판정. 구간이 이미 닫힌 관계는 KNOWN이지만 TRUE가 아니고, 아직 읽지 않은 사건은 둘 다 아니다">
+          <defs>
+            <marker id="a3" markerWidth="9" markerHeight="9" refX="7.5" refY="3.6" orient="auto" class="m-accent"><polygon points="0,0 8,3.6 0,7.2"/></marker>
+          </defs>
+
+          <rect class="band" x="310" y="56" width="890" height="36"/>
+          <rect class="band" x="310" y="152" width="890" height="36"/>
+
+          <text class="t-mono" x="1010" y="44" text-anchor="middle">KNOWN(t)</text>
+          <text class="t-mono" x="1140" y="44" text-anchor="middle">TRUE(t)</text>
+          <text class="t-sub"  x="1010" y="28" text-anchor="middle">valid_from ≤ t</text>
+          <text class="t-sub"  x="1140" y="28" text-anchor="middle">valid_from ≤ t ≤ valid_to</text>
+
+          <text class="t"     x="300" y="72" text-anchor="end">Relation · 복녀 ↔ 남편</text>
+          <text class="t-mono" x="300" y="88" text-anchor="end">valid_from 7 · valid_to 95</text>
+          <rect class="bar" x="349" y="62" width="423" height="24" rx="2"/>
+          <text class="t-ok" x="1010" y="80" text-anchor="middle">✓</text>
+          <text class="t-no" x="1140" y="80" text-anchor="middle">✕</text>
+
+          <text class="t"      x="300" y="120" text-anchor="end">Character · 왕 서방</text>
+          <text class="t-mono" x="300" y="136" text-anchor="end">valid_from 72 · valid_to null</text>
+          <rect class="bar" x="661" y="110" width="279" height="24" rx="2"/>
+          <path class="edge-supplied" d="M940,122 L968,122" marker-end="url(#a3)"/>
+          <text class="t-ok" x="1010" y="128" text-anchor="middle">✓</text>
+          <text class="t-ok" x="1140" y="128" text-anchor="middle">✓</text>
+
+          <text class="t"      x="300" y="168" text-anchor="end">Event · 살해</text>
+          <text class="t-mono" x="300" y="184" text-anchor="end">segment 118 · 구간 없음</text>
+          <rect class="bar-mute" x="875" y="158" width="14" height="24" rx="2"/>
+          <text class="t-sub" x="899" y="176">아직 읽지 않음</text>
+          <text class="t-no" x="1010" y="176" text-anchor="middle">✕</text>
+          <text class="t-no" x="1140" y="176" text-anchor="middle">✕</text>
+
+          <line class="edge-empty" x1="796" y1="52" x2="796" y2="238"/>
+          <text class="t-accent" x="796" y="44" text-anchor="middle">t = P100 (읽은 위치)</text>
+
+          <line class="axis" x1="320" y1="232" x2="960" y2="232"/>
+          <line class="tick" x1="320" y1="232" x2="320" y2="239"/>
+          <line class="tick" x1="411" y1="232" x2="411" y2="239"/>
+          <line class="tick" x1="507" y1="232" x2="507" y2="239"/>
+          <line class="tick" x1="603" y1="232" x2="603" y2="239"/>
+          <line class="tick" x1="700" y1="232" x2="700" y2="239"/>
+          <line class="tick" x1="796" y1="232" x2="796" y2="239"/>
+          <line class="tick" x1="892" y1="232" x2="892" y2="239"/>
+          <text class="t-mono" x="320" y="254" text-anchor="middle">P001</text>
+          <text class="t-mono" x="411" y="254" text-anchor="middle">P020</text>
+          <text class="t-mono" x="507" y="254" text-anchor="middle">P040</text>
+          <text class="t-mono" x="603" y="254" text-anchor="middle">P060</text>
+          <text class="t-mono" x="700" y="254" text-anchor="middle">P080</text>
+          <text class="t-mono" x="796" y="254" text-anchor="middle">P100</text>
+          <text class="t-mono" x="892" y="254" text-anchor="middle">P120</text>
+          <text class="t-sub"  x="640" y="280" text-anchor="middle">segment index — 서사 시간 좌표. 0은 “좌표 없음”이며 어떤 시점에도 보이지 않는다</text>
+        </svg>
+      </div>
+      <figcaption><b>시간 구간을 갖는 클래스는 5종이다</b> — <code>Character</code>·<code>Location</code>·<code>CharacterState</code>·<code>Relation</code>·<code>Annotation</code>. <code>Event</code>에는 <code>valid_from</code>이 없다: 사건은 구간이 아니라 <code>segment_id</code> 한 점이며, 그래서 검수 목록에서 인물과 사건을 한 축에 세우려면 segment index를 써야 했다.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ══════════ 클래스 ══════════ -->
+  <section>
+    <p class="eyebrow">클래스 11종</p>
+    <h2>계약에 선언된 전체 어휘</h2>
+    <p><code>anchor</code> 표시는 원문 문자 offset을 직접 갖는 클래스, <code>time</code> 표시는 <code>valid_from</code>/<code>valid_to</code> 구간을 갖는 클래스다.</p>
+
+    <div class="cards">
+      <div class="card">
+        <h3>Document</h3>
+        <p class="fields">document_id · sample_id · title · author · publication_year · language · source · source_url · rights · created_at</p>
+        <div class="tags"><span class="tag">루트</span><span class="tag">rights 게이트</span></div>
+      </div>
+      <div class="card">
+        <h3>Scene</h3>
+        <p class="fields">scene_id · index · title · start_segment_id · end_segment_id · summary · source_ref</p>
+        <div class="tags"><span class="tag">segment 범위</span></div>
+      </div>
+      <div class="card">
+        <h3>Segment</h3>
+        <p class="fields">segment_id · index · scene_id · text · char_start · char_end · description_spans[]</p>
+        <div class="tags"><span class="tag anchor">anchor · 좌표 원점</span></div>
+      </div>
+      <div class="card">
+        <h3>Mention</h3>
+        <p class="fields">mention_id · entity_type · entity_id · text · segment_id · char_start · char_end · status · confidence · method</p>
+        <div class="tags"><span class="tag anchor">anchor</span></div>
+      </div>
+      <div class="card">
+        <h3>DescriptionSpan</h3>
+        <p class="fields">description_id · entity_type · entity_id · subject_text · subject_kind · categories[] · matched_terms[] · char_start · char_end · image(null)</p>
+        <div class="tags"><span class="tag anchor">anchor</span><span class="tag">생성 없음</span></div>
+      </div>
+      <div class="card">
+        <h3>Character</h3>
+        <p class="fields">character_id · canonical_name · aliases · mentions · first_segment_id · description · role · status · confidence · method · valid_from · valid_to</p>
+        <div class="tags"><span class="tag anchor">anchor · mentions</span><span class="tag time">time</span></div>
+      </div>
+      <div class="card">
+        <h3>Location</h3>
+        <p class="fields">location_id · name · aliases · mentions · type · parent_name · parent_location_id · narrative_coords · valid_from · valid_to</p>
+        <div class="tags"><span class="tag anchor">anchor · mentions</span><span class="tag time">time</span><span class="tag">계층</span></div>
+      </div>
+      <div class="card">
+        <h3>Event</h3>
+        <p class="fields">event_id · type(9종) · summary · segment_id · scene_id · sentence_index · characters · locations · source_span · status · confidence · method</p>
+        <div class="tags"><span class="tag anchor">anchor · source_span</span><span class="tag">구간 없음</span></div>
+      </div>
+      <div class="card">
+        <h3>CharacterState</h3>
+        <p class="fields">state_id · character_id · segment_id · location_id · mental_state · physical_state · known_facts · source_event_ids · valid_from · valid_to · invalidated_by</p>
+        <div class="tags"><span class="tag time">time</span><span class="tag">segment까지</span></div>
+      </div>
+      <div class="card">
+        <h3>Annotation</h3>
+        <p class="fields">annotation_id · term · category · era · segment_id · text · char_start · char_end · references[{label,url,source}] · note("") · valid_from · valid_to</p>
+        <div class="tags"><span class="tag anchor">anchor</span><span class="tag time">time</span><span class="tag">링크만</span></div>
+      </div>
+      <div class="card">
+        <h3>Relation</h3>
+        <p class="fields">relation_id · source_type · source_id · target_type · target_id · relation_type(31종) · event_ids · segment_ids · weight · valid_from · valid_to · invalidated_by</p>
+        <div class="tags"><span class="tag time">time</span><span class="tag">노드 3종</span></div>
+      </div>
+      <div class="card">
+        <h3>status · 전 클래스 공통</h3>
+        <p class="fields">suggested → confirmed / edited / rejected · manual<br>자동 추출은 언제나 suggested로 들어오고 확정은 사람만 한다</p>
+        <div class="tags"><span class="tag">자동 확정 금지</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 관측 ══════════ -->
+  <section>
+    <p class="eyebrow">도면에서 읽히는 것</p>
+    <h2>구조가 드러내는 네 가지</h2>
+
+    <div class="findings">
+      <div class="finding">
+        <span class="mark">01</span>
+        <div>
+          <h3>가장 서사적인 축이 비어 있고, 비어 있다는 사실도 아직 측정되지 않았다</h3>
+          <p>선언 31개 중 규칙 채널이 채우는 것은 3개다. 인물 간 관계 12종과 사건 간 인과 6종은 전부 LLM 관계 pass에만 의존하는데, 그 채널의 실제 recall은 아직 측정된 적이 없다(<code>doc_nextsession §6</code> — Ollama 미기동으로 미수행).</p>
+          <p>온톨로지를 형식화할 때 가장 먼저 확인할 값이 이것이다. 채워지지 않는 축을 RDF로 옮겨도 비어 있는 것은 그대로다.</p>
+        </div>
+      </div>
+
+      <div class="finding">
+        <span class="mark">02</span>
+        <div>
+          <h3>domain/range 테이블이 두 파일에 두 벌 있다</h3>
+          <p><code>src/analyzer.js:779</code>는 키를 <code>"character:character"</code>로, <code>src/server/prompts.js:20</code>은 <code>"character->character"</code>로 쓴다. 값 목록은 현재 같지만 <b>동기화를 강제하는 것이 아무것도 없다.</b> 한쪽만 늘리면 LLM이 만든 관계를 병합기가 조용히 버린다.</p>
+          <p>별칭 규칙이 세 채널로 갈라져 <code>actor</code> 위반 54건을 냈던 것과 같은 형태의 문제다.</p>
+        </div>
+      </div>
+
+      <div class="finding">
+        <span class="mark">03</span>
+        <div>
+          <h3>같은 사실을 두 방식으로 표현할 수 있는 지점이 있다</h3>
+          <p><code>Relation</code>의 노드는 <code>character</code>·<code>event</code>·<code>location</code> 셋뿐이다(<code>analyzer.js:772</code>). 그래서 “이 상태를 일으킨 사건”은 관계가 아니라 <code>CharacterState.source_event_ids</code> 필드로, “이 관계를 무효화한 사건”은 <code>invalidated_by</code>로 적힌다.</p>
+          <p>그래프 밖에 인과가 하나 더 있는 셈이다. 온톨로지로 옮길 때 둘을 한 축으로 합칠지가 첫 설계 결정이 된다.</p>
+        </div>
+      </div>
+
+      <div class="finding">
+        <span class="mark">04</span>
+        <div>
+          <h3>시간이 클래스마다 다른 모양이다</h3>
+          <p>다섯 클래스는 구간(<code>valid_from</code>–<code>valid_to</code>)을 갖고, <code>Event</code>는 점(<code>segment_id</code>)이며, <code>Scene</code>은 범위(<code>start</code>–<code>end_segment_id</code>)다. 세 가지 시간 표현이 한 좌표계(segment index) 위에 공존한다.</p>
+          <p>RDF는 무시간이라 이 셋을 옮기려면 reification이나 named graph가 필요하다 — 형식화 비용이 가장 크게 걸리는 자리다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
