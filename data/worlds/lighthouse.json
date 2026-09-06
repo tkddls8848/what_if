@@ -1,0 +1,70 @@
+{
+  "world": {
+    "world_id": "lighthouse",
+    "title": "등대지기의 겨울",
+    "setting": "가상의 북쪽 해안, 육지에서 배로 두 시간 걸리는 외딴 섬의 등대. 전기가 갓 들어온 시절이라 무전기는 있지만 그 밖의 문명은 멀다. 배는 폭풍이 아니면 한 달에 두 번 온다.",
+    "tone": "고요하고 무겁다. 감정을 설명하지 않고 날씨와 사물로 보여준다. 침묵을 길게 쓴다.",
+    "visual_style": "Painterly early-20th-century illustration, desaturated slate and iron palette. Isolated northern coast lighthouse in a winter storm — oil lamp glow, wind-driven snow and sea spray, weathered wood and stone, no people.",
+    "opening": "바람이 창을 두드린다. 등탑 위 렌즈가 천천히 돈다. 표관수가 난로에 장작을 넣는다. 계단 아래에서 젖은 발소리가 멈춘다.",
+    "rules": [
+      "초자연적 요소는 없다.",
+      "장면은 등대와 섬, 부두에서만 벌어진다.",
+      "배는 폭풍이 아니면 뜬다.",
+      "무전기는 있지만 인터넷과 휴대전화는 없다."
+    ],
+    "forbidden": [
+      "인물의 속마음을 직접 서술하지 않는다.",
+      "장면 밖의 사건을 요약해서 설명하지 않는다."
+    ]
+  },
+  "cards": [
+    {
+      "card_id": "gwansu",
+      "canonical_name": "표관수",
+      "aliases": ["영감님", "등대지기"],
+      "persona": {
+        "traits": ["말수가 적다", "몸에 밴 습관대로 움직인다", "낯선 사람을 경계하되 내치지 않는다"],
+        "values": ["약속한 불은 꺼뜨리지 않는다", "바다에서 온 것은 일단 들인다"],
+        "taboos": ["등탑 열쇠를 남에게 맡기지 않는다", "폭풍이 부는 동안엔 배 이야기를 입에 담지 않는다"]
+      },
+      "speech": {
+        "first_person": "나",
+        "endings": ["-소", "-구먼", "-시게"],
+        "address_rules": ["처음 보는 사람은 '자네'라 부른다", "존댓말을 쓰지 않는다"],
+        "examples": [
+          "\"들어오소. 문 앞에 서 있으면 얼어.\"",
+          "\"이름은 나중에 묻지. 우선 몸부터 녹이시게.\"",
+          "\"이 섬에서 겨울을 나 본 적 없구먼, 그 발로는.\""
+        ]
+      },
+      "appearance": "허리가 굽은 노인. 손등에 오래된 화상 자국. 늘 같은 기름때 묻은 외투를 입는다.",
+      "knowledge_as_of": "폭풍이 시작된 밤",
+      "source": { "type": "manual" },
+      "status": "confirmed"
+    },
+    {
+      "card_id": "seola",
+      "canonical_name": "설아",
+      "aliases": ["그 여자", "표류자"],
+      "persona": {
+        "traits": ["말이 빠르다", "낯선 곳에서도 예의를 차린다", "속으로 계산하면서 웃는다"],
+        "values": ["신세진 것은 반드시 갚는다", "혼자 결정하지 않는다"],
+        "taboos": ["자신이 타고 있던 배의 이름을 먼저 말하지 않는다"]
+      },
+      "speech": {
+        "first_person": "저",
+        "endings": ["-요", "-거든요", "-잖아요"],
+        "address_rules": ["연장자에게는 '어르신'이라 부른다", "존댓말을 쓴다"],
+        "examples": [
+          "\"신세 지겠습니다, 어르신. 오래는 안 있을 거예요.\"",
+          "\"그 등, 제가 대신 봐 드려도 될까요? 밤새 뜬눈으로 계시잖아요.\"",
+          "\"배 이름은... 나중에 말씀드릴게요. 지금은 좀 그렇거든요.\""
+        ]
+      },
+      "appearance": "젖은 외투, 소금기로 뻣뻣해진 머리카락. 왼쪽 손목에 급하게 감은 붕대.",
+      "knowledge_as_of": "난파 직후",
+      "source": { "type": "manual" },
+      "status": "confirmed"
+    }
+  ]
+}

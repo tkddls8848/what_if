@@ -1,46 +1,320 @@
 # 기술 설계
 
-Updated: 2026-08-09
+Updated: 2026-09-05
 
 설치·실행·API 요약은 [루트 README](../README.md)에 있다. 이 문서는 **왜 그렇게
 만들었는지**와 데이터 계약을 다룬다.
 
-5절 데이터 계약의 구조도는 [`ontology-map.html`](ontology-map.html)에 있다 — 앵커 층·관계
-스키마·시간 축 세 도면이며, 수치는 코드에서 직접 센 값이다.
+## 0. 현재 상태 — 저장소는 피보팅 중이다
+
+이 저장소는 한국어 소설 **분석기**에서 AI **인터랙티브 소설**로 피보팅하는 중이고,
+지금은 두 앱이 한 서버 위에 함께 있다.
+
+| 경로 | 앱 | 상태 |
+| --- | --- | --- |
+| `/` | 랜딩 페이지 | 새로 추가 |
+| `/play` | 인터랙티브 소설 (새 앱) | M1 완료 |
+| `/analyze`, `/check` | 소설 분석기 (옛 앱) | 동작한다. M3에서 걷어낸다 |
+| `/api/turn`, `/api/cf/health` | 인터랙티브 소설 | M1 완료 |
+| `/api/analyze/ollama`, `/api/import/wikisource`, `/api/whatif` | 분석기 | 동작한다 |
+
+피보팅의 방향과 마일스톤은
+[`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`](../doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md)에
+있고, 그 문서가 이 문서의 상위 권위다. M1의 태스크별 구현 계획은
+[`doc_nextsession/2026-09-05-m1-turn-loop-plan.md`](../doc_nextsession/2026-09-05-m1-turn-loop-plan.md)에 있다.
+
+**M1이 끝났고 M2~M5가 남았다.** M1은 순수 추가였다 — 옛 앱의 코드를 한 줄도 바꾸지
+않았고, 그래서 `npm test`는 기존 161건과 새 123건을 합쳐 284건 전부 통과한다. 피보팅
+계획은 M1에서 기존 테스트가 깨질 것을 전제했으나 그럴 일이 없었다.
+
+이 문서의 1~8절은 새 앱을, 9절 이후는 아직 살아 있는 옛 앱을 다룬다.
 
 ## 1. 원칙
 
-1. 자동 추출은 사실이 아니라 후보다. 모든 항목은 `suggested`로 들어오고 검수를 거친다.
-2. 모든 주장은 원문 문자 offset으로 되짚을 수 있어야 한다. 근거를 만들 수 없는 항목은
-   응답과 병합에서 제외한다.
-3. 스포일러 판정은 뷰 필터가 아니라 질의 원시연산이다. 판정 코드는 저장소에 한 벌만 둔다.
-4. 오탐보다 누락을 택한다. 근거가 약한 후보를 만들어 놓고 검수로 지우게 하지 않는다.
-5. LLM은 선택 채널이다. Ollama가 없어도 앱은 규칙 분석으로 완전히 동작한다.
+옛 앱의 원칙 다섯 중 셋은 그대로 살아남았고 둘은 뒤집혔다. 뒤집힌 자리가 이 피보팅의
+성격을 가장 잘 보여 준다.
+
+| 원칙 | 상태 |
+| --- | --- |
+| 자동 추출은 사실이 아니라 후보다. 검수를 거친다 | **유지.** 카드는 `suggested`로 들어오고 사람이 확정한다 |
+| 스포일러 판정은 뷰 필터가 아니라 질의 원시연산이다 | **유지.** 판정 코드는 여전히 `core/asof.js` 한 벌뿐이다 |
+| 오탐보다 누락을 택한다 | **유지** |
+| 모든 주장은 원문 문자 offset으로 되짚을 수 있어야 한다 | **앵커 교체.** 생성물에는 되짚을 원문이 없다. 대신 모든 사건이 자기를 만든 `turn_index`로 되짚인다 |
+| LLM은 선택 채널이다. Ollama가 없어도 앱은 완전히 동작한다 | **뒤집혔다.** 이제 필수는 클라우드고 선택이 로컬이다 |
 
 ## 2. 모듈 경계
 
 ```text
 src/core/     ← 런타임 공용. DOM·네트워크·전역 상태 없음 (ESM)
    ↑
-src/analyzer.js   규칙 분석과 LLM 결과 병합 (ESM)
+src/analyzer.js   규칙 분석과 LLM 결과 병합 (ESM) — 옛 앱
    ↑                    ↑
-src/app/  브라우저      mcp/  읽기 전용 어댑터 (ESM)
+src/app/  브라우저      mcp/  읽기 전용 어댑터 (ESM) — 동결
                         ↑
-src/server/  Ollama 파이프라인·외부 가져오기 (CommonJS)
+src/server/  Express·Ollama·외부 가져오기 (CommonJS)
+   ↑
+src/llm/      모델 어댑터 (CommonJS)
 ```
 
 모듈 종류는 디렉터리별 `package.json`이 명시한다 — `src/`와 `mcp/`는 `"type": "module"`,
-`src/server/`는 `"type": "commonjs"`다. 루트 `server.js`도 CommonJS다. Node의 구문
-자동 감지에 기대지 않는다.
+`src/server/`와 `src/llm/`은 `"type": "commonjs"`다. 루트 `server.js`도 CommonJS다.
 
-의존 방향은 한쪽이다. `src/core/`는 자기들끼리와 `src/config.js`(상태값 상수)만
-import하고 위쪽을 참조하지 않는다. `src/app/`과 `mcp/`는 `src/core/`와 `analyzer.js`를
-쓴다. **`mcp/`에는 한국어 사전·정규식·엔티티 판정을 두지 않는다** — 규칙이 두 벌이 되면
-화면과 에이전트의 답이 갈라진다. `tests/mcp_tools.test.mjs`가 이 규칙을 검사한다.
+**`src/llm/`이 CommonJS인 것은 의도다.** 소비자(`server.js`, `src/server/turn.js`)가 전부
+CommonJS이고, 매 요청 경로에서 `await import()`를 도는 것은 얻는 것이 없다. 피보팅 설계
+문서 9절은 처음에 ESM으로 적었고 구현 시작 시점에 이 판단으로 바로잡았다.
 
-`app/` 안에는 순환 import가 있다(`views.js` ↔ 뷰 모듈, `utils.js` → `views.js`).
-`renderAll`이 함수 선언이라 호이스팅되고 로드 시점에 호출하지 않으므로 안전하다.
-빌드 단계도 린터도 없으므로 `tests/module_wiring.test.mjs`가 import 누락을 잡는다.
+의존 방향은 한쪽이다.
+
+- `src/core/`는 자기들끼리와 `src/config.js`만 import한다. **`src/llm/`도 참조하지 않는다.**
+- **`src/llm/`은 `src/core/`를 참조하지 않는다.** 어댑터는 프롬프트 문자열과 스키마만 받고
+  도메인을 모른다. 프롬프트 조립은 `core/memory.js`가, 호출은 `src/llm/`이 한다.
+- CommonJS인 `src/server/`가 ESM인 `src/core/`를 쓸 때는 `await import()`를 쓴다.
+  선례는 `src/server/wikisource.js`다.
+
+이 방향 때문에 한국어 기준 문자/토큰 상수(`1.2`)가 `src/core/memory.js`와
+`src/llm/budget.js`에 각각 있다. 중복이지만 의존 방향을 깨는 것보다 낫다고 판단했다.
+두 값이 조용히 갈라질 수 있다는 것이 이 선택의 대가다.
+
+## 3. 턴 루프
+
+### 3-1. 두 종류의 호출
+
+한 턴은 성격이 완전히 다른 두 호출로 이뤄진다.
+
+| | ① 서술 생성 | ② 상태 추출 |
+| --- | --- | --- |
+| 무엇 | 장면 산문 + 선택지 3개 | 그 턴의 사건·상태 변화 |
+| 출력 형식 | 자유 텍스트 | JSON Schema 강제 |
+| 스트리밍 | **필수** | 불필요 |
+| 담당 | Cloudflare Workers AI 70B | 로컬 Ollama 4B |
+| 상태 | M1에서 구현 | **M3** |
+
+**이 분리는 선택이 아니라 강제다.** Workers AI의 JSON 모드는 스트리밍을 지원하지
+않는다. 한 호출로 산문과 구조화 데이터를 같이 받으려면 스트리밍을 포기해야 하고,
+그러면 매 턴 수 초의 백지 대기가 생긴다.
+
+M1이 만든 것은 ①뿐이다. ②는 M3에서 `src/server/turn.js` 끝에 비동기로 붙는다.
+
+### 3-2. 흐름
+
+```text
+사용자 입력 (자유 서술 또는 추천 선택지)
+  │
+  ├─ core/memory.js  프롬프트 조립 = 고정 프리픽스 + 최근 3턴 + 현재 입력
+  │
+  ├─ llm/cloudflare.js  narrate() — 스트리밍 ON, JSON OFF
+  │     → core/narration.js 분할기가 마커 앞까지만 통과시킴
+  │     → server.js가 SSE `narration` 이벤트로 흘림
+  │
+  ├─ core/narration.js  parseNarration() — 서술과 선택지 3개를 가름
+  ├─ llm/budget.js      Neuron 집계
+  └─ core/session.js    appendTurn() — 새 세션 객체 반환
+```
+
+선택지 3개는 서술과 같은 호출에서 받는다. 나누면 턴당 Neurons가 1.5배가 되고, 선택지는
+방금 쓴 장면의 문맥이 가장 진할 때 나와야 좋다.
+
+### 3-3. Workers AI 계약
+
+Workers 배포 없이 Node에서 REST로 직접 호출한다.
+
+```text
+POST https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/{MODEL}
+Authorization: Bearer {API_TOKEN}
+```
+
+토큰은 `Workers AI - Read`와 `Workers AI - Edit` 두 권한이 필요하고, `CF_ACCOUNT_ID`·
+`CF_API_TOKEN` 환경변수로만 받는다. **어떤 HTTP 응답에도 나가지 않는다** — 401 응답
+본문에는 토큰 조각이 섞여 돌아올 수 있으므로 업스트림 메시지를 그대로 싣지 않는다.
+
+비밀은 `.env`에 둔다. 저장소 루트의 `.env.example`을 `.env`로 복사해서 채우고,
+`.env`는 `.gitignore`에 있어 커밋되지 않는다. `server.js`가 부팅 시점에
+`src/server/env.js`로 `.env`를 읽어 `process.env`에 채우는데, 이미 세팅된 실제
+환경변수(셸의 `$env:`, CI, 배포 환경)가 항상 파일 값보다 우선한다 — `.env`는 기본값일
+뿐 권위 있는 값이 아니다.
+
+스트리밍 응답은 `data: {"response":"…","usage":{…},"tool_calls":[]}` 프레임이 빈 줄로
+구분되고 `data: [DONE]`으로 끝난다. 프레임은 청크 경계와 무관하게 도착하므로 `"\n\n"`이
+나올 때까지 버퍼에 모았다가 자른다. 프레임 하나가 깨져도 스트림 전체를 버리지 않는다 —
+이미 화면에 흐른 글자를 되돌릴 수 없으므로 살릴 수 있는 만큼 살리는 편이 낫다.
+
+`error_code` 어휘: `CONNECTION_FAILED` · `TIMEOUT` · `ABORTED` · `AUTH_FAILED` ·
+`QUOTA_EXHAUSTED` · `CAPACITY` · `RATE_LIMITED` · `UPSTREAM_ERROR` · `BAD_RESPONSE` ·
+`NOT_CONFIGURED`. 401/403과 429를 `UPSTREAM_ERROR`에서 갈라내는 이유는 대응이
+다르기 때문이다 — 인증 실패는 재시도해도 소용없고 사람이 토큰을 고쳐야 한다.
+
+429는 한 걸음 더 나눈다. Cloudflare는 최소 두 가지 무관한 사유를 같은 HTTP 429로
+묶어 보낸다 — 본문의 `errors[0].code`로만 구분할 수 있다:
+`3036`(하루 무료 할당 10,000 Neurons 소진 → `QUOTA_EXHAUSTED`, 재시도 무의미,
+할당은 매일 초기화)과 `3040`(데이터센터 용량 부족, 계정 할당과 무관 →
+`CAPACITY`, 재시도하면 풀릴 수 있다). 그 외/코드를 알 수 없는 429는 `RATE_LIMITED`로
+남고, 원인을 추측하지 않는 대신 Cloudflare가 보낸 `code`·`message`를 그대로 옮겨
+싣는다(본문 전체가 아니라 이 두 필드만 화이트리스트 — 401/403처럼 토큰 노출
+우려가 있는 나머지 필드는 여전히 담지 않는다).
+
+`ABORTED`(호출자 취소)와 `TIMEOUT`(내부 타이머)을 구분하는 이유도 비슷하다 —
+의도적 취소를 재시도 대상으로 표시하면 호출자가 멈추라고 한 요청을 다시 쏜다.
+
+### 3-4. 예산
+
+무료 할당은 **하루 10,000 Neurons**, 초과분은 1,000 Neurons당 $0.011다.
+`@cf/meta/llama-3.3-70b-instruct-fp8-fast`는 100만 토큰당 입력 26,668 / 출력 204,805
+Neurons다.
+
+| 시나리오 | 입력 | 출력 | Neurons/턴 | 무료 한도 내 턴 수 |
+| --- | ---: | ---: | ---: | ---: |
+| 짧은 서술 (약 400자) | 2,900 | 350 | 149 | **67** |
+| 표준 (약 600자) | 3,650 | 500 | 200 | **50** |
+| 긴 서술 (약 1,000자) | 4,800 | 800 | 292 | **34** |
+
+표준 시나리오의 199.7407 Neurons는 `tests/budget.test.mjs`가 고정하고 있다.
+
+**8B로 내려도 소용이 없다.** `llama-3.1-8b-instruct`는 입력 25,608 / 출력 75,147로 입력
+단가가 70B와 거의 같다. 표준 시나리오에서 200 → 131 Neurons, 절감은 35%뿐인데 한국어
+롤플레이 서술 품질 차이는 그보다 훨씬 크다. **서술 모델은 70B로 고정한다.**
+
+출력이 비용의 48~56%이고 최근 턴 원문이 입력의 45%를 차지한다. 그래서 레버는 둘이다 —
+서술 길이(`max_tokens`)와 보관 턴 수(`recent_turns`). 둘 다 세션 설정으로 노출한다.
+
+**모르는 모델의 비용은 0이 아니라 `null`로 보고한다.** 계량기가 조용히 거짓말을 하면
+예산 표시 전체가 무의미해진다. 같은 이유로 응답에 `usage`가 없으면 0으로 집계하지 않고
+어림값으로 세면서 `turn.usage.estimated = true`로 표시한다.
+
+## 4. 기억층
+
+프롬프트는 **고정 프리픽스 + 기억 4층**이다. 이것 말고는 아무것도 들어가지 않는다.
+
+| | 내용 | 토큰 | 상태 |
+| --- | --- | ---: | --- |
+| 프리픽스 | 캐릭터 카드 + 세계관 규칙·금지사항 | 700 | M1 |
+| 단기 | **최근 3턴** 원문 | 1,650 | M1 |
+| 중기 | 8턴마다 압축한 요약 체인 | 400 | M4 |
+| 장기 | **상태 그래프** 직렬화 | 300 | M3 |
+| 자료 | RAG로 뽑은 설정 조각 | 600 | M4 |
+
+**M1은 프리픽스와 단기 기억만 만든다.** 나머지 자리를 지금 빈 블록으로 만들어 두지
+않는다 — 빈 블록도 토큰을 먹고 모델이 그것을 지시로 오해한다.
+
+최근 턴은 대화 로그가 아니라 `user`/`assistant` 쌍으로 싣는다. 한 덩어리 텍스트로 넣으면
+모델이 그것을 "지금까지의 서술"이 아니라 "따라 써야 할 예시"로 다룬다.
+
+**한 턴은 쌍으로 들어가거나 통째로 빠진다.** 모델이 빈 서술을 돌려준 실패한 턴을
+사용자 발화만 남겨 실으면 답을 못 받은 지시처럼 보이고, 같은 역할 메시지가 연달아 붙어
+chat 형식도 깨진다.
+
+리뷰어가 demo 픽스처로 실제 렌더한 프리픽스는 636자(약 320~420토큰)로 700토큰 예산
+안에 들어온다. 카드 1장 기준이며 M2에서 카드가 늘면 다시 재야 한다.
+
+## 5. 서술과 선택지 가르기
+
+모델은 장면을 쓴 뒤 `<선택지>` 태그 다음에 선택지 3개를 쓴다. 경계가 한국어 제목
+(`[선택지]`)이 아니라 태그인 이유는 앞의 것이 서술 본문에도 나올 수 있기 때문이다.
+
+**모델이 형식을 안 지키는 일은 반드시 생긴다.** 그때 턴을 실패시키지 않고 선택지 없는
+턴으로 넘긴다 — 사용자는 자유 입력으로 계속할 수 있다.
+
+스트리밍이 이 채널의 까다로운 부분이다. 마커는 청크 경계에 쪼개져 도착할 수 있어서
+(`"<선"` 다음 `"택지>"`), 분할기는 **마커 길이-1(4자)만큼 꼬리를 붙들고 있다가** 마커가
+아님이 확정되면 그때 내보낸다. 그러지 않으면 화면에 `<선택지>`가 잠깐 나타났다 사라진다.
+
+그 대가로 `push()`가 돌려주는 것은 언제나 확정분의 접두사다 — 어느 순간에도 "지금까지
+받은 전부"가 아니다. 대신 `finish()`가 남은 delta와 전체 텍스트를 함께 돌려주고,
+선택지 파싱은 전체 텍스트로 한다.
+
+## 6. 데이터 계약
+
+### 6-1. 신규 객체
+
+| 객체 | 필드 |
+| --- | --- |
+| `World` | `world_id`, `title`, `source_type`, `source_url`, `setting`, `tone`, `rules[]`, `forbidden[]`, `created_at` |
+| `CharacterCard` | `card_id`, `world_id`, `canonical_name`, `aliases[]`, `persona{traits,values,taboos}`, `speech{first_person,endings,address_rules,examples}`, `appearance`, `relationships[]`, `knowledge_as_of`, `source{}`, `status` |
+| `Session` | `session_id`, `world_id`, `card_ids[]`, `pov`, `opening`, `turns[]`, `turn_count`, `summary_chain[]`, `created_at`, `settings{recent_turns, max_tokens}` |
+| `Turn` | `turn_id`, `session_id`, `index`, `user_input`, `narration`, `choices[]`, `events[]`, `state_changes[]`, `audit{violations[]}`, `usage`, `model`, `extraction_failed` |
+
+`Turn.events[]`, `state_changes[]`, `audit{violations[]}`, `Session.summary_chain[]`은
+M1에서 늘 비어 있다. M3의 추출 채널과 M4의 요약 체인이 채운다. 자리를 지금 비워 두는
+이유는 나중에 `Turn`/`Session` 모양이 바뀌면 저장된 세션이 전부 깨지기 때문이다.
+
+`created_at`은 `createSession`/`normalizeWorld`가 아니라 `createSession`을 호출하는
+지점(생성 시점)에서만 만든다. `normalizeSession`/`normalizeWorld`는 값이 있으면
+보존하고 없으면 빈 문자열로 둘 뿐, 여기서 새로 생성하지 않는다 — 두 정규화 함수는
+요청마다 다시 도는데 여기서 생성하면 호출할 때마다 값이 바뀌어 정규화가 멱등하지
+않게 된다.
+
+`Session`에는 `budget` 필드가 없다. Cloudflare의 무료 할당은 계정 단위로 하루에 한 번
+초기화되므로 장부는 세션이 아니라 프로세스(`server.js`의 `turnBudget`)가 소유한다 —
+세션마다 복사해 두면 동시에 열린 세션들이 같은 할당을 중복 집계한다.
+
+### 6-2. id 생성 규칙
+
+두 규칙이 다르고, 그 차이에 근거가 있다.
+
+- **`card_id`는 결정적이다** — `worldId:canonical_name`의 slug이며, 명시된 값이 있으면
+  그것이 이긴다. 서버가 매 턴 요청마다 `data/worlds/*.json`을 다시 읽고
+  `loadWorldFile`을 부르므로, 모듈 카운터를 쓰면 같은 카드가 요청마다 다른 id를 받고
+  브라우저에 저장된 `session.pov`가 매칭에 실패한다.
+- **`session_id`와 `turn_id`는 `crypto.randomUUID()`다** — 이것들은 파생값이 아니라
+  정체성이라 결정적일 필요가 없다. 모듈 카운터는 프로세스가 재시작하면 0부터 다시 세고,
+  세션은 브라우저 `localStorage`에 저장되므로 그때 이미 저장된 id와 충돌한다.
+  `node:crypto`가 아니라 전역 `crypto`를 쓴다 — `src/core/`는 브라우저에서도 도는 공용
+  코드다.
+
+### 6-3. 재사용 객체 — 좌표만 교체
+
+`Event`, `CharacterState`, `Relation`은 스키마를 유지하고 시간 좌표만 바꾼다.
+`segment_id`와 `source_span`이 빠지고 `turn_index`(1부터인 정수, 0은 좌표 없음)가 들어온다.
+M3에서 실제로 채워진다.
+
+### 6-4. 저장
+
+세션은 브라우저 `localStorage`에 저장된다. 서버는 세션을 보관하지 않고, 브라우저가 매
+요청에 통째로 보낸다. 그래서 **서버는 받은 세션을 신뢰하지 않는다** —
+`normalizeSession()`이 컨테이너와 `turns[]` 원소의 모양을 모두 고정하고, `turn_count`는
+저장값이 아니라 `turns.length`에서 다시 센다. 5MB 한도와 서버 파일 이전은 M4의 일이다.
+
+세계관과 카드는 `data/worlds/{world_id}.json`에서 읽는다. **`world_id`는
+`[a-z0-9_-]+`로 제한된다** — 그대로 경로에 들어가므로 `../`를 허용하면 이 서버가 임의
+파일 읽기 도구가 된다. 위키문헌 호스트 화이트리스트와 같은 이유다.
+
+## 7. 설계에서 값나간 결정들
+
+M1은 태스크마다 독립 리뷰를 거쳤고, 리뷰가 잡은 결함 14건은 **전부 계획서의 참조 코드에서
+온 것**이었다. 그중 코드를 읽는 사람이 되짚어야 할 것들을 남긴다.
+
+| 결정 | 근거 |
+| --- | --- |
+| 모르는 모델은 `null`, 0이 아님 | 계량기가 조용히 거짓말을 하면 예산 표시가 무의미해진다 |
+| `usage` 없으면 어림값 + `estimated: true` | 위와 같은 이유. 0으로 집계하지 않는다 |
+| `release()`를 호출자가 부른다 | 스트리밍 본문을 읽는 동안 abort 릴레이가 붙어 있어야 호출자의 취소가 fetch까지 닿는다. `send()`가 알아서 떼면 그게 끊긴다 |
+| `truncated`는 두 경로에서 켜진다 | 본문 순회 중 I/O 실패, 그리고 **마지막 프레임이 잘린 채 스트림이 얌전히 끝난 경우**. 후자는 안쪽 `catch`가 파싱 실패를 삼켜 바깥 `catch`가 아예 안 돌기 때문에 별도 플래그가 필요했다 |
+| `appendTurn`이 `settings`·`card_ids`도 복사 | 얕은 스프레드는 불변성의 명시된 이유(브라우저 상태와 서버 응답이 객체를 공유하면 안 된다)를 반만 지킨다 |
+| `loadWorldFile`을 `try`로 감싼다 | `loadWorldFile(raw = {})`의 기본 매개변수는 `undefined`에만 걸린다. 최상위가 `null`인 세계관 파일은 `raw.world`에서 던지고, async 핸들러 밖으로 나간 rejection을 Express 4가 잡지 않아 **프로세스가 죽는다** |
+| `play.html`이 `response.ok`를 먼저 본다 | 스트림 시작 전에 나가는 오류는 JSON 한 덩어리라 `\n\n`이 없다. 그대로 SSE 파서에 넣으면 통째로 삼켜져 독자가 아무것도 못 본다 |
+| 파일의 `world_id`가 카드의 것을 이긴다 | 세계관 파일을 파싱하는 로더에서 카드 항목의 stray 필드가 소속을 바꾸면 안 된다 |
+
+## 8. 화면
+
+| 경로 | 내용 |
+| --- | --- |
+| `/play` | 장면 서술 스트리밍, 자유 입력, 추천 선택지, 잘림 안내, 남은 Neurons |
+
+읽는 화면이므로 계기판을 두지 않는다. 남은 Neurons만 구석에 작게 둔다. 세계관·카드
+관리(`/worlds`)와 카드 검수(`/check` 전환), 상태 그래프 뷰(`/session`)는 M2 이후다.
+
+`truncated`는 화면에 표시한다. 잘린 장면을 독자가 모르면 작가가 문장을 끊은 것으로 읽는다.
+
+---
+
+# 옛 앱 (분석기) — M3에서 제거
+
+여기서부터는 `/analyze`와 `/check`에 남아 있는 분석기의 설계다. 코드는 그대로 동작하고
+테스트도 통과한다. 피보팅 설계 문서 2-2절이 제거 대상과 이유를 정한다 — 규칙 추출,
+시대 주석, 시각 묘사는 폐기하고, `asof`·`audit`·`query`·`recap`·`whatif`·`export_if`는
+좌표만 바꿔 새 앱이 물려받는다.
+
+아래 절 번호는 피보팅 이전 문서의 것을 그대로 둔다. 이 부분 안의 상호 참조("2절의 의존 방향" 같은)도 그때의 번호를 가리킨다 — 아직 동작하는 코드의 설명이라
+고쳐 쓰기보다 원문을 보존하는 편이 낫다고 봤다.
 
 ## 3. 분석 파이프라인
 
@@ -354,9 +628,32 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 고정하고 근거 없는 추측을 금지한다. 분석 리소스의 각 segment에는 그 시점까지 보이는
 `description_spans`가 들어가며 별도 분석 규칙은 MCP에 없다.
 
-## 12. 테스트 지도
+---
 
-`npm test`는 Ollama·네트워크 없이 161건을 실행한다.
+# 테스트 지도
+
+`npm test`는 Ollama·네트워크·Cloudflare 없이 **284건**을 실행한다 — 옛 앱 161건과 새 앱
+123건이다. M1은 옛 앱 코드를 한 줄도 바꾸지 않았으므로 두 묶음이 함께 초록이다.
+
+## 새 앱
+
+| 파일 | 건수 | 무엇을 지키는가 |
+| --- | ---: | --- |
+| `budget.test.mjs` | 9 | Neuron 산수(표준 시나리오 199.7407), 미상 모델이 0이 아닌 `null`, UTC 일 단위 초기화 |
+| `cloudflare_client.test.mjs` | 23 | REST 계약, 오류 매핑 8종, **토큰 미유출**, abort 리스너 해제, `ABORTED`/`TIMEOUT` 구분, SSE 프레임 재조립·깨진 프레임 격리·`[DONE]` 이후 무시·`truncated` 두 경로 |
+| `card.test.mjs` | 12 | 카드 정규화, **id 결정성**, 파일의 `world_id`가 카드의 것을 이김, 빈 라벨 생략, 픽스처 로드 |
+| `session.test.mjs` | 24 | 1부터인 `turn_index`, **불변 갱신**(`settings`·`card_ids` 포함), 적대적 입력의 모양 고정, `turn_count` 재계산 |
+| `narration.test.mjs` | 9 | 마커 파싱 관용도(4가지 번호 표기), 마커 없을 때 degrade, **분할기 홀드백**(마커가 조각으로 와도 화면에 안 샘) |
+| `memory.test.mjs` | 11 | system 1개·마지막은 언제나 user, 최근 N턴 창, 오프닝은 첫 턴만, **인접 동일 역할 없음** |
+| `turn.test.mjs` | 13 | 서술/선택지 가르기, **`onNarration`에 마커 미유출**, 실제/추정 usage 집계, 선택지 없어도 성공, `truncated` 전달, 원본 세션 불변 |
+| `turn_api.test.mjs` | 11 | HTTP 계약, SSE 순서, **비밀 미유출**, **경로 조작 거부**, 429→502, **망가진 세계관 파일에도 프로세스 생존**, 모델 허용목록 |
+| `routes.test.mjs` | 4 | `/`가 랜딩을 주고 분석기 마크업을 주지 않음(static의 디렉터리 인덱스가 `/`를 가로채는 회귀를 잡는다), `/analyze`·`/check`·`/play` 도달 |
+| `env.test.mjs` | 7 | **이미 설정된 환경변수가 `.env`를 이김**, 따옴표·주석·`export` 접두·첫 `=` 분리, 깨진 줄과 없는 파일에도 안 던짐 |
+
+`npm test`가 커버하지 않는 것: 실제 Cloudflare 호출, 실제 서술 품질, 30턴 세션에서의
+캐릭터 일관성. 앞의 둘은 검증 방법이 없고 마지막은 M3의 감사 되먹임이 잡을 자리다.
+
+## 옛 앱
 
 | 파일 | 무엇을 지키는가 |
 | --- | --- |
@@ -367,29 +664,48 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 | `audit.test.mjs` | 제약 5축 탐지(정상 데이터에 위반을 주입해 검증) |
 | `whatif.test.mjs` | 시드에 미래 없음, 생성물 격리, 원작 인용 검출, ink/Twee 참조 무결성 |
 | `epub.test.mjs` | ZIP·OPF 파싱, 챕터 offset 유효성, 챕터 경계 Scene |
-| `mcp_tools.test.mjs` | `as_of` 강제, 근거 동반, 권리 게이트, 어댑터 전용 규칙 |
-| `mcp_server.test.mjs` | stdio 전송 위 도구·리소스·프롬프트 노출 |
-| `scene_pipeline.test.mjs` | 청크 분할, 병합, 부분 실패, evidence 검증, 관계 화이트리스트 |
-| `ollama_merge.test.mjs` | mention 앵커링 게이트, LLM 항목의 `suggested` 진입 |
+| `mcp_tools.test.mjs` / `mcp_server.test.mjs` | `as_of` 강제, 근거 동반, 권리 게이트, stdio 노출 |
+| `scene_pipeline.test.mjs` / `ollama_merge.test.mjs` | 청크 분할·병합·부분 실패·evidence 검증, mention 앵커링 게이트 |
 | `server_api.test.mjs` | HTTP 계약, SSE, 캐시, what-if 프롬프트에 미래 없음 |
 | `wikisource.test.mjs` | 호스트 제한, 구조화 오류 |
 | `module_wiring.test.mjs` | import 없이 호출하는 함수 없음 |
 | `asof_qa.test.mjs` | 시점 질의 평가셋 전체 통과와 누출 0 |
-| `annotations.test.mjs` | 주석 앵커 무결성, 자동 채널이 서술을 안 만듦, 링크 허용 호스트, 시점 가림 |
-| `descriptions.test.mjs` | 묘사 원문 offset, 주어 절 제한, 문서 비례 문턱, 이미지 비움, 시점 가림 |
+| `annotations.test.mjs` / `descriptions.test.mjs` | 주석 앵커 무결성·링크 허용 호스트·시점 가림, 묘사 원문 offset·주어 절 제한 |
 
-평가는 두 축이다. `npm run eval`은 골든셋 precision/recall,
-`npm run eval:qa`는 "그 시점에 답할 수 있는가 / 미래를 흘리지 않는가"를 잰다.
-`npm run verify:refs`는 네트워크가 있을 때만 도는 별개 검사다 — 주석 링크의 실존을 본다.
-외부 벤치마크 수치를 완료 기준으로 쓰지 않는다. 기준은 이 저장소의 골든셋이다.
+평가는 두 축이다. `npm run eval`은 골든셋 precision/recall, `npm run eval:qa`는 "그 시점에
+답할 수 있는가 / 미래를 흘리지 않는가"를 잰다. `npm run verify:refs`는 네트워크가 있을
+때만 도는 별개 검사다. 외부 벤치마크 수치를 완료 기준으로 쓰지 않는다.
 
-## 13. 알려진 한계
+# 알려진 한계
+
+## 새 앱
+
+- **아직 사람이 실제로 30턴을 돌려 보지 않았다.** 자동 테스트로는 "재미있는가"를 알 수
+  없고, 재미없으면 M2 이후가 헛수고다. 몇 턴째부터 캐릭터가 무너지는지, 선택지가 서로
+  다른 방향을 가리키는지, 실측 Neurons가 추정과 얼마나 다른지가 미확인이다.
+- 3-4절 토큰 추정표는 한국어 600자 ≈ 500토큰 가정이며 **실측이 아니다.** M4의 계량기가
+  실제 `usage`를 쌓으면 교체한다.
+- 로컬 4B가 대화 턴에서 상태를 정확히 뽑는지 검증되지 않았다. 옛 파이프라인은 소설 원문
+  분석이었고 이건 다른 과제다. 실패하면 추출을 클라우드 JSON 모드로 올려야 하고 하루
+  턴 수가 30 수준으로 떨어진다.
+- 하루 50턴이 실사용에 충분한지 모른다. 한 세션 30턴이면 하루 두 세션이 안 된다.
+- Workers AI 카탈로그의 대형 모델(DeepSeek V4 Pro 등) Neuron 단가를 확인하지 않았다.
+  70B보다 싸거나 비슷하면 서술 품질이 크게 오른다.
+- 세션 저장이 브라우저 전용이라 5MB 한도에 걸릴 수 있다(턴당 약 2KB). M4에서 서버
+  파일로 옮긴다.
+- `world_id` 정규식이 대소문자를 허용해 Windows(대소문자 무시)와 Linux에서 동작이 갈린다.
+- 스트림이 프레임 중간에 끊기면 `/play`의 문단이 pending 상태로 남고 설명이 없다.
+
+## 옛 앱
 
 - 대명사·생략 주어·동일 인물 병합은 해결되지 않았다. 「복녀의 남편」과 「남편」이 별개
   인물로 갈라지는 것이 대표 사례다.
-- `polarity` 경고는 부정의 작용 범위를 보지 않는다. 「날개」에서 78건이 뜬다.
+- `polarity` 경고는 부정의 작용 범위를 보지 않는다. 「날개」에서 15건이 뜬다.
 - Scene은 챕터를 모르는 입력에서 서사학적 판정이 아니라 탐색용 균등 분할이다.
 - 상세 분석 품질과 시간은 모델·하드웨어·원문 길이에 따라 달라진다.
-- 저장은 브라우저 전용이고 서버는 분석 결과를 보관하지 않는다.
-- 개발·테스트는 Node v23.3에서 검증했다. EPUB 읽기가 `DecompressionStream("deflate-raw")`에
-  의존하므로 구버전 Node에서는 EPUB 경로와 그 테스트가 동작하지 않을 수 있다.
+
+## 공통
+
+- 개발·테스트는 Node v23.3에서 검증했다. EPUB 읽기가
+  `DecompressionStream("deflate-raw")`에, id 생성이 전역 `crypto.randomUUID()`에
+  의존하므로 구버전 Node에서는 해당 경로가 동작하지 않을 수 있다.

@@ -317,11 +317,22 @@
     <p class="lede">저장소에 지금 존재하는 데이터 계약을 코드에서 그대로 옮긴 것이다. 새로 제안한 구조가 아니라 <b>현재 상태</b>이며, 모든 수치는 <code>src/analyzer.js</code>·<code>src/config.js</code>·<code>src/server/prompts.js</code>에서 센 값이다.</p>
     <div class="meta">
       <div><span class="k">대상</span><span class="v">tkddls8848/what_if</span></div>
-      <div><span class="k">기준 문서</span><span class="v">doc/README.md §5</span></div>
+      <div><span class="k">기준 문서</span><span class="v">doc/README.md 옛 앱 §5</span></div>
       <div><span class="k">기준 커밋</span><span class="v">a2986ac</span></div>
       <div><span class="k">도면</span><span class="v">A · B · C</span></div>
     </div>
   </header>
+
+  <aside class="pivot-note" style="max-width:var(--measure);margin:0 0 2.5rem;padding:1rem 1.15rem;border:1px solid var(--rule);border-left:4px solid var(--ochre);background:var(--surface-2);">
+    <p style="margin:0 0 .6rem;font-weight:700;">이 도면은 피보팅 이전 <b>분석기</b>의 온톨로지다.</p>
+    <p style="margin:0 0 .6rem;">저장소는 소설 분석기에서 AI 인터랙티브 소설로 피보팅하는 중이다. 분석기는 <code>/</code>·<code>/check</code>에서 그대로 동작하고 이 도면도 그 코드에 대해서는 여전히 정확하지만, <code>/play</code>의 새 앱은 이 계약을 그대로 쓰지 않는다.</p>
+    <ul style="margin:0 0 .6rem;padding-left:1.2rem;">
+      <li><b>도면 A(앵커 층)는 새 앱에 적용되지 않는다.</b> 생성된 턴에는 되짚을 원문이 없어 <code>source_span</code>이 사라지고, 앵커가 문자 offset에서 <code>turn_index</code>로 바뀐다.</li>
+      <li><b>도면 C(KNOWN/TRUE)는 그대로 물려받는다.</b> 술어 두 개의 구분과 <code>asOf()</code> 단일 판정은 새 앱의 핵심이며, 좌표만 segment index에서 turn index로 교체된다.</li>
+      <li>도면 B(관계 그래프)의 규칙 채널은 M3에서 폐기되고, 관계는 대화 턴에서 추출된다.</li>
+    </ul>
+    <p style="margin:0;">현재 상태는 <a href="README.md">doc/README.md</a>, 피보팅의 방향과 마일스톤은 <a href="../doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md">피보팅 설계 문서</a>에 있다.</p>
+  </aside>
 
   <section aria-label="계수 요약">
     <div class="counts">
@@ -481,7 +492,7 @@
         <span><i class="dashed"></i>계약에 선언만 되고 비어 있음</span>
         <span><i class="ochre"></i>앵커가 segment까지만 (도면 A)</span>
       </div>
-      <figcaption><b>인물 간 관계와 사건 간 인과는 규칙으로 만들지 않는다.</b> 근거 없이 만드느니 비운다는 설계 결정이며(<code>doc/README.md §5</code>), 유일한 공급원은 Ollama 관계 pass다. 그 채널은 아직 실측되지 않았다(<code>doc_nextsession §6</code> 미수행).</figcaption>
+      <figcaption><b>인물 간 관계와 사건 간 인과는 규칙으로 만들지 않는다.</b> 근거 없이 만드느니 비운다는 설계 결정이며(<code>doc/README.md 옛 앱 §5</code>), 유일한 공급원은 Ollama 관계 pass다. 그 채널은 끝내 실측되지 않은 채 M3 폐기 대상이 되었다.</figcaption>
     </figure>
 
     <div class="tablewrap">
@@ -680,7 +691,7 @@
         <span class="mark">01</span>
         <div>
           <h3>가장 서사적인 축이 비어 있고, 비어 있다는 사실도 아직 측정되지 않았다</h3>
-          <p>선언 31개 중 규칙 채널이 채우는 것은 3개다. 인물 간 관계 12종과 사건 간 인과 6종은 전부 LLM 관계 pass에만 의존하는데, 그 채널의 실제 recall은 아직 측정된 적이 없다(<code>doc_nextsession §6</code> — Ollama 미기동으로 미수행).</p>
+          <p>선언 31개 중 규칙 채널이 채우는 것은 3개다. 인물 간 관계 12종과 사건 간 인과 6종은 전부 LLM 관계 pass에만 의존하는데, 그 채널의 실제 recall은 끝내 측정되지 않았고, 피보팅과 함께 M3에서 폐기된다.</p>
           <p>온톨로지를 형식화할 때 가장 먼저 확인할 값이 이것이다. 채워지지 않는 축을 RDF로 옮겨도 비어 있는 것은 그대로다.</p>
         </div>
       </div>

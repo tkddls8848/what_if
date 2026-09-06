@@ -2,6 +2,10 @@ node_modules/
 cache/
 coverage/
 dist/
+
+# 장면 배경 이미지 캐시(src/server/scene.js가 생성). world_id+장소+시간+날씨의
+# 해시로 이름 붙는 생성물이라 커밋 대상이 아니다 — 서빙만 되고 저장소 자산은 아니다.
+data/scenes/
 .env
 .env.*.local
 *.log

@@ -10,15 +10,118 @@ const cache = require("./src/server/cache");
 const whatif = require("./src/server/whatif");
 const wikisource = require("./src/server/wikisource");
 
+const fs = require("fs");
+
+const { createCloudflareClient } = require("./src/llm/cloudflare");
+const { createImageClient, DEFAULT_IMAGE_MODEL } = require("./src/llm/image");
+const { createBudget, DEFAULT_NARRATION_MODEL, NEURONS_PER_MTOK } = require("./src/llm/budget");
+const turn = require("./src/server/turn");
+const scene = require("./src/server/scene");
+const env = require("./src/server/env");
+
+const ROOT = __dirname;
+
+// .env는 있으면 읽고 없으면 조용히 넘어간다 — 선택 사항이다. 이미 세팅된 실제
+// 환경변수(셸에서 $env:로 넣었거나 CI/배포가 주입한 값)가 항상 파일보다 우선한다.
+// 아래에서 process.env를 읽는 어떤 코드보다 먼저 호출해야 의미가 있다.
+// 값은 절대 로그로 남기지 않는다 — 키 이름만 남긴다.
+const envResult = env.loadEnvFile(path.join(ROOT, ".env"));
+if (envResult.loaded && envResult.applied.length > 0) {
+  console.log(`[env] .env에서 적용: ${envResult.applied.join(", ")}`);
+}
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const ROOT = __dirname;
+
+/** 프로세스 수명 동안 유지되는 하루 장부. M4에서 파일로 옮긴다. */
+const turnBudget = createBudget();
+
+function getCloudflareClient() {
+  return createCloudflareClient({
+    accountId: process.env.CF_ACCOUNT_ID,
+    apiToken: process.env.CF_API_TOKEN,
+    apiBase: process.env.CF_API_BASE,
+    timeoutMs: Number(process.env.CF_TIMEOUT_MS) || 120000
+  });
+}
+
+/**
+ * 서술과 같은 Cloudflare 계정/토큰을 쓴다 — 계정은 하나, 호출하는 모델만 다르다.
+ *
+ * IMAGE_MODEL이 비어 있으면 DEFAULT_IMAGE_MODEL(phoenix-1.0)로 폴백한다 —
+ * flux-1-schnell(4스텝 증류)을 기본값으로 두지 않는다(src/llm/image.js 상단
+ * 설명 참고: 증류 모델은 속도를 사려고 프롬프트 순응도를 버리는데, 플레이어가
+ * 신고한 문제는 정확히 그 순응도였다). IMAGE_MODEL에 레지스트리에 없는 값이
+ * 오면 createImageClient()가 조용히 기본값으로 넘어가지 않고, 매 generate()
+ * 호출에서 구조화 오류 INVALID_ARGUMENT를 낸다 — 그 오류는 아래 /api/turn의
+ * scene.resolveScene 호출부가 이미 로그로 남긴다(턴 자체는 실패시키지 않는다).
+ *
+ * IMAGE_WIDTH/IMAGE_HEIGHT가 비어 있으면 image.js의 기본값(512×512)을 쓴다 —
+ * 512×512는 Cloudflare 타일(512×512) 1장이라 1024×1024(4장)의 1/4 비용이고,
+ * 플레이어가 해상도보다 내용 충실도를 우선한다고 명시했으니 이 크기를 기본으로
+ * 삼는다. width/height를 안 받는 모델(flux-1-schnell)에는 이 값이 전달돼도
+ * image.js의 buildFluxBody가 애초에 읽지 않는다.
+ */
+function getImageClient() {
+  return createImageClient({
+    accountId: process.env.CF_ACCOUNT_ID,
+    apiToken: process.env.CF_API_TOKEN,
+    apiBase: process.env.CF_API_BASE,
+    timeoutMs: Number(process.env.CF_IMAGE_TIMEOUT_MS) || 60000,
+    model: String(process.env.IMAGE_MODEL || "").trim() || DEFAULT_IMAGE_MODEL,
+    width: Number(process.env.IMAGE_WIDTH) || undefined,
+    height: Number(process.env.IMAGE_HEIGHT) || undefined
+  });
+}
+
+/**
+ * 세계관 파일 읽기.
+ *
+ * world_id가 그대로 경로에 들어가므로 문자 집합을 제한한다. `../`를 허용하면 이 서버가
+ * 임의 파일 읽기 도구가 된다 — 위키문헌 호스트 화이트리스트와 같은 이유다.
+ */
+// i 플래그를 쓰지 않는다 — 파일 시스템이 Windows에서는 대소문자를 구분하지 않고
+// Linux에서는 구분한다. i를 주면 개발 환경(Windows)에서 로드되던 세계관이
+// 배포 환경(Linux)에서 404가 나는 것을 여기서는 통과시켜 버려 뒤늦게 드러난다.
+const WORLD_ID = /^[a-z0-9_-]+$/;
+
+async function loadWorld(worldId) {
+  if (!WORLD_ID.test(String(worldId || ""))) {
+    return { ok: false, status: 400, error_code: "INVALID_ARGUMENT", message: "world_id 형식이 올바르지 않습니다." };
+  }
+  const file = path.join(ROOT, "data", "worlds", `${worldId}.json`);
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (_error) {
+    return { ok: false, status: 404, error_code: "NOT_FOUND", message: `세계관 '${worldId}'을 찾을 수 없습니다.` };
+  }
+
+  // 파싱은 됐지만 모양이 계약과 다른 파일이 있다. loadWorldFile은 raw.world를 바로 읽으므로
+  // 최상위가 null이면 여기서 던지고, 그대로 두면 핸들러 밖으로 나가 프로세스가 죽는다.
+  try {
+    const { loadWorldFile } = await import("./src/core/card.js");
+    return { ok: true, ...loadWorldFile(raw) };
+  } catch (error) {
+    console.error("[world] load error:", error);
+    return { ok: false, status: 500, error_code: "INTERNAL", message: `세계관 '${worldId}'을 읽을 수 없습니다.` };
+  }
+}
 
 app.use(express.json({ limit: "2mb" }));
 
+// ROOT 전체를 정적으로 연다. data/ 아래가 공개로 노출되는 것은 예전에는 곁다리
+// 부작용이었지만, 이제는 의도적인 설계다 — src/server/scene.js가 쓰는
+// data/scenes/{world_id}/{hash}.png를 이 미들웨어가 그대로 서빙해서 별도의
+// 이미지 서빙 라우트를 만들지 않는다. 생성된 PNG는 저장소에 커밋하지 않는다
+// (.gitignore의 data/scenes/ 참고) — 서빙 대상이지 저장소 자산이 아니다.
 app.use(
   express.static(ROOT, {
     extensions: ["html"],
+    // index 옵션 기본값이 "index.html"이라 그대로 두면 정적 미들웨어가 "/"를 먼저
+    // 가로채 index.html을 내려주고, 아래 app.get("/")는 영영 실행되지 않는다.
+    // "/"를 랜딩 페이지로 쓰려면 여기서 디렉터리 인덱스를 꺼야 한다.
+    index: false,
     setHeaders(res, filePath) {
       if (filePath.endsWith(".txt")) {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -28,11 +131,19 @@ app.use(
 );
 
 app.get("/", (_req, res) => {
+  res.sendFile(path.join(ROOT, "home.html"));
+});
+
+app.get("/analyze", (_req, res) => {
   res.sendFile(path.join(ROOT, "index.html"));
 });
 
 app.get("/check", (_req, res) => {
   res.sendFile(path.join(ROOT, "index.html"));
+});
+
+app.get("/play", (_req, res) => {
+  res.sendFile(path.join(ROOT, "play.html"));
 });
 
 // 요청 시점에 생성 — 테스트가 OLLAMA_URL을 바꿔 fake 서버를 주입할 수 있다.
@@ -41,6 +152,13 @@ function getClient() {
     baseUrl: process.env.OLLAMA_URL || "http://127.0.0.1:11434",
     timeoutMs: Number(process.env.OLLAMA_TIMEOUT_MS) || 120000
   });
+}
+
+// CF_API_BASE/OLLAMA_URL과 같은 패턴: 기본값은 ROOT지만, 테스트가 SCENE_ROOT를
+// 임시 디렉터리로 바꿔 실제 저장소 밖에 장면 이미지를 쓰게 할 수 있다. 요청
+// 시점에 읽어야 테스트가 server.js를 import한 뒤에도 값을 바꿀 수 있다.
+function getSceneRoot() {
+  return process.env.SCENE_ROOT || ROOT;
 }
 
 function errorBody(errorCode, message, retryable = false) {
@@ -212,6 +330,184 @@ app.post("/api/whatif", async (req, res) => {
     return;
   }
   res.json({ model: result.model, alternatives: result.alternatives, diagnostics: result.diagnostics });
+});
+
+/** 설정 여부와 예산만 알린다. account id와 토큰은 어떤 경우에도 응답에 넣지 않는다. */
+/**
+ * 세계관 목록. 피커와 요약 카드에 쓸 만큼만 돌려준다 — 파일 전체(카드 상세, 규칙,
+ * 오프닝 전문)를 다 보내면 목록 하나 그리자고 여러 세계관의 전체 프롬프트 프리픽스를
+ * 네트워크로 흘리는 셈이라 낭비다. 상세가 필요하면 /api/worlds/:world_id를 부른다.
+ */
+app.get("/api/worlds", async (_req, res) => {
+  const dir = path.join(ROOT, "data", "worlds");
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((name) => name.endsWith(".json"));
+  } catch (error) {
+    console.error("[worlds] list error:", error);
+    files = [];
+  }
+
+  const worlds = [];
+  for (const file of files) {
+    const worldId = file.slice(0, -".json".length);
+    const loaded = await loadWorld(worldId);
+    if (!loaded.ok) {
+      // 파일 하나가 깨졌다고 목록 전체가 죽으면 안 된다 — loadWorld가 이미 파싱/모양
+      // 오류를 잡아 ok:false로 돌려주므로 여기서는 건너뛰고 계속한다.
+      console.error(`[worlds] '${worldId}' 건너뜀: ${loaded.message}`);
+      continue;
+    }
+    worlds.push({
+      world_id: loaded.world.world_id,
+      title: loaded.world.title,
+      setting: loaded.world.setting,
+      card_names: loaded.cards.map((card) => card.canonical_name)
+    });
+  }
+
+  res.json({ worlds });
+});
+
+/**
+ * 세계관 상세. 헤더·캐스트·오프닝을 한 번에 그리도록 정규화된 {world, cards}를
+ * 그대로 돌려준다. 경로 조작 방지는 loadWorld 안의 WORLD_ID 검사를 그대로 재사용한다
+ * — world_id가 파일 경로에 들어가는 지점은 한 곳(loadWorld)이어야 검사도 한 곳이다.
+ */
+app.get("/api/worlds/:world_id", async (req, res) => {
+  const loaded = await loadWorld(req.params.world_id);
+  if (!loaded.ok) {
+    res.status(loaded.status).json(errorBody(loaded.error_code, loaded.message));
+    return;
+  }
+  res.json({ world: loaded.world, cards: loaded.cards });
+});
+
+app.get("/api/cf/health", (_req, res) => {
+  res.json({
+    ok: true,
+    configured: getCloudflareClient().isConfigured(),
+    model: DEFAULT_NARRATION_MODEL,
+    budget: turnBudget.snapshot()
+  });
+});
+
+app.post("/api/turn", async (req, res) => {
+  const userInput = String(req.body?.user_input || "").trim();
+  const model = String(req.body?.model || DEFAULT_NARRATION_MODEL).trim();
+  const wantsStream = String(req.headers.accept || "").includes("text/event-stream");
+
+  if (!userInput) {
+    res.status(400).json(errorBody("INVALID_ARGUMENT", "행동을 입력하세요."));
+    return;
+  }
+
+  // model은 llm/cloudflare.js에서 업스트림 URL 경로에 그대로 들어간다
+  // (`${base}/accounts/${account}/ai/run/${model}`). fetch/URL은 경로 세그먼트의
+  // `..`를 정규화하므로, 검증 없이 넘기면 `../../../../accounts/X/tokens/verify` 같은
+  // 값이 인증된(Authorization: Bearer) 요청을 임의의 Cloudflare v4 API 경로로 보낼 수
+  // 있다 — world_id를 WORLD_ID 정규식으로 제한하는 것과 같은 이유다. 가격표에 있는
+  // 모델만 허용하면 검증과 동시에 계량 가능함도 보장된다.
+  if (!Object.prototype.hasOwnProperty.call(NEURONS_PER_MTOK, model)) {
+    res.status(400).json(errorBody(
+      "INVALID_ARGUMENT",
+      `지원하지 않는 model입니다. 다음 중 하나를 쓰세요: ${Object.keys(NEURONS_PER_MTOK).join(", ")}`
+    ));
+    return;
+  }
+
+  const { normalizeSession } = await import("./src/core/session.js");
+  const session = normalizeSession(req.body?.session);
+
+  const loaded = await loadWorld(session.world_id);
+  if (!loaded.ok) {
+    res.status(loaded.status).json(errorBody(loaded.error_code, loaded.message));
+    return;
+  }
+
+  const sse = wantsStream ? startSse(res) : null;
+  const abort = watchDisconnect(res);
+
+  let result;
+  try {
+    result = await turn.runTurn({
+      world: loaded.world,
+      cards: loaded.cards,
+      session,
+      userInput,
+      client: getCloudflareClient(),
+      model,
+      budget: turnBudget,
+      onNarration: (delta) => { if (sse) sse.send("narration", { delta }); },
+      signal: abort.signal,
+      // 로컬 Ollama가 판정자다. 없거나(설치 안 함) 죽어 있으면 judge.js가
+      // CONNECTION_FAILED를 돌려주고 runTurn은 judge_unavailable:true로 턴을
+      // 그대로 성공시킨다 — 판정 하나 때문에 턴을 잃지 않는다(스펙 그대로).
+      judgeClient: getClient()
+    });
+  } catch (error) {
+    console.error("[turn] error:", error);
+    result = errorBody("INTERNAL", "턴 생성 내부 오류");
+  }
+
+  if (abort.signal.aborted) return;
+
+  if (!result.ok) {
+    const body = errorBody(result.error_code, result.message, result.retryable);
+    if (sse) {
+      sse.send("error", body);
+      sse.end();
+    } else {
+      res.status(result.error_code === "INVALID_ARGUMENT" ? 400 : 502).json(body);
+    }
+    return;
+  }
+
+  const body = {
+    turn: result.turn,
+    session: result.session,
+    budget: result.budget,
+    truncated: result.truncated,
+    budget_unknown: result.budget_unknown,
+    // 게이지가 왜 움직였는지(last_change)와 판정기가 살아 있었는지(judge_unavailable)를
+    // 실어 보낸다 — runTurn은 이미 이 값들을 계산해 돌려주지만, 이 응답 바디가 그동안
+    // 빠뜨리고 있었다. play.html의 게이지/트리거 UI는 이 두 필드 없이는 아무것도
+    // 그릴 수 없다(sim 자체는 session.sim에 이미 실려 있다).
+    judge_unavailable: result.judge_unavailable,
+    last_change: result.last_change
+  };
+  if (sse) {
+    sse.send("done", body);
+  } else {
+    res.json(body);
+  }
+
+  // 장면 이미지는 서술이 화면에 완전히 다 흐른 "다음"이다 — 독자는 이미 서술과
+  // 선택지를 전부 받았고, 이건 그 위에 몇 초 늦게 얹히는 배경 그림일 뿐이다.
+  // result.scene이 null이면(장면이 안 바뀌었으면) 아무 것도 하지 않는다. 여기서
+  // 실패해도(Workers AI 오류, 디스크 쓰기 실패 등) 턴은 이미 성공한 채로 끝났다 —
+  // 그림 한 장 때문에 턴을 실패시키지 않는다. SSE가 아니면 보낼 채널이 없으니
+  // 그래도 캐시는 데워 두고 조용히 끝낸다(다음에 같은 장면이 오면 즉시 나간다).
+  if (result.scene) {
+    try {
+      const sceneResult = await scene.resolveScene({
+        world: loaded.world,
+        scene: result.scene,
+        client: getImageClient(),
+        budget: turnBudget,
+        rootDir: getSceneRoot()
+      });
+      if (!sceneResult.ok) {
+        console.error("[scene] resolve error:", sceneResult.error_code, sceneResult.message);
+      } else if (sse) {
+        sse.send("scene", { url: sceneResult.url, cached: sceneResult.cached });
+      }
+    } catch (error) {
+      console.error("[scene] 내부 오류:", error);
+    }
+  }
+
+  if (sse) sse.end();
 });
 
 /**
