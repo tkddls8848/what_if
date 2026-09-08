@@ -14,7 +14,7 @@
 ```powershell
 npm install
 Copy-Item .env.example .env
-notepad .env   # CF_ACCOUNT_ID, CF_API_TOKEN을 채운다
+notepad .env   # CF_ACCOUNT_ID, CF_API_TOKEN을 채운다 (GEMINI_API_KEY는 선택)
 npm start
 ```
 
@@ -41,6 +41,31 @@ CF_API_TOKEN=<Workers AI 토큰>
 직접 넣어도 그대로 동작합니다.
 
 무료 할당은 하루 10,000 Neurons이고, 기본 모델 `@cf/meta/llama-3.3-70b-instruct-fp8-fast` 기준으로 턴당 약 200 Neurons — **하루 약 50턴**입니다. 남은 양은 화면 오른쪽 위에 표시됩니다.
+
+### Gemini 무료 티어 폴백 (선택 사항)
+
+`GEMINI_API_KEY`를 채우면 Cloudflare 할당이 마른 뒤(`QUOTA_EXHAUSTED`)에도 서술이
+끊기지 않고 Google AI Studio의 무료 티어로 이어집니다. 키는
+[aistudio.google.com](https://aistudio.google.com/)에서 신용카드 없이 발급합니다.
+
+```
+# .env
+GEMINI_API_KEY=<AI Studio 키>
+GEMINI_MODEL=            # 비우면 gemini-2.5-flash
+```
+
+두 무료 할당은 재는 단위가 다릅니다 — Cloudflare는 **토큰량**(하루 10,000
+Neurons), Gemini는 **요청 수**(RPD/RPM)입니다. 그래서 토큰 예산을 먼저 다 쓰고
+요청 수로 넘어가는 이 순서가 하루 턴 수를 가장 크게 만듭니다. 실제 RPD 한도는
+모델마다 다르고 자주 바뀌므로 AI Studio 콘솔에서 확인하세요.
+
+폴백은 다음과 같이 동작합니다.
+
+- 비워 두면 폴백 없이 지금까지와 똑같습니다. 반대로 `CF_*` 없이 이것만 채우면 Gemini 단독으로도 돕니다.
+- 설정과 순서는 `GET /api/cf/health`의 `providers`에서 확인합니다. 폴백은 평소에 한 번도 안 불리므로, 정작 필요한 날에 키가 비어 있었다는 걸 그때 알면 늦습니다.
+- 폴백이 쓰인 턴은 응답의 `provider`가 `"gemini"`이고 `budget_unknown`이 `true`가 됩니다. Neuron은 Cloudflare의 단위라 Gemini가 쓴 양은 Neuron으로 잴 수 없기 때문입니다 — 비용을 모른다는 뜻이 아니라 그 장부의 대상이 아니라는 뜻입니다.
+- **서술만** 폴백합니다. 장면 배경 이미지는 Cloudflare 전용이고, 실패해도 턴은 성공한 채 끝납니다.
+- 서술이 이미 화면에 흐르기 시작한 뒤에는 폴백하지 않습니다. 이미 나간 글자는 되돌릴 수 없으므로, 겹쳐 쓰는 대신 거기서 끊고 `truncated`로 알립니다.
 
 분석기의 기본 Ollama 주소는 `http://127.0.0.1:11434`, 기본 모델은 `qwen3.5:4b`입니다. `PORT`, `OLLAMA_URL`, `OLLAMA_TIMEOUT_MS`도 같은 `.env`에 선택적으로 채울 수 있습니다(기본값은 `.env.example`에 적혀 있습니다).
 

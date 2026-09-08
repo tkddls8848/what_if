@@ -13,6 +13,8 @@ const wikisource = require("./src/server/wikisource");
 const fs = require("fs");
 
 const { createCloudflareClient } = require("./src/llm/cloudflare");
+const { createGeminiClient, DEFAULT_MODEL: DEFAULT_GEMINI_MODEL } = require("./src/llm/gemini");
+const { createFallbackClient } = require("./src/llm/fallback");
 const { createImageClient, DEFAULT_IMAGE_MODEL } = require("./src/llm/image");
 const { createBudget, DEFAULT_NARRATION_MODEL, NEURONS_PER_MTOK } = require("./src/llm/budget");
 const turn = require("./src/server/turn");
@@ -42,6 +44,42 @@ function getCloudflareClient() {
     apiToken: process.env.CF_API_TOKEN,
     apiBase: process.env.CF_API_BASE,
     timeoutMs: Number(process.env.CF_TIMEOUT_MS) || 120000
+  });
+}
+
+function getGeminiClient() {
+  return createGeminiClient({
+    apiKey: process.env.GEMINI_API_KEY,
+    apiBase: process.env.GEMINI_API_BASE,
+    model: String(process.env.GEMINI_MODEL || "").trim() || DEFAULT_GEMINI_MODEL,
+    timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS) || Number(process.env.CF_TIMEOUT_MS) || 120000
+  });
+}
+
+/**
+ * 서술 제공처 체인 — Cloudflare가 주, Gemini 무료 티어가 폴백이다.
+ *
+ * 순서를 이렇게 두는 이유는 두 무료 할당의 모양이 다르기 때문이다. Cloudflare는
+ * 하루 10,000 Neurons를 **토큰량**으로 재고, Gemini 무료 티어는 **요청 수**로
+ * 잰다(gemini-2.5-flash 기준 하루 500회). 서술 한 번은 프롬프트가 길어 Neurons를
+ * 빨리 먹지만 요청은 한 번뿐이다 — 그래서 Cloudflare를 먼저 태워 토큰 예산을 다
+ * 쓰고, 그게 마르는(QUOTA_EXHAUSTED) 시점부터 요청 수로 재는 쪽으로 넘어가는
+ * 편이 하루에 칠 수 있는 턴 수를 가장 크게 만든다.
+ *
+ * GEMINI_API_KEY가 없으면 체인에 Cloudflare만 남는다 — 지금까지와 정확히 같게
+ * 동작한다(fallback.js가 설정 안 된 제공처는 시도조차 하지 않는다).
+ * 반대로 CF_* 없이 GEMINI_API_KEY만 넣으면 Gemini 단독으로도 돈다.
+ *
+ * 이미지(src/llm/image.js)에는 폴백이 없다. Gemini에는 Workers AI의 텍스트→이미지
+ * 모델에 대응하는 경로가 이 코드가 쓰는 형태로 존재하지 않는다 — 장면 그림은
+ * 지금도 Cloudflare 전용이고, 실패해도 턴은 성공한 채 끝난다(아래 /api/turn 끝부분).
+ */
+function getNarrationClient() {
+  return createFallbackClient({
+    providers: [
+      { name: "cloudflare", client: getCloudflareClient(), model: DEFAULT_NARRATION_MODEL },
+      { name: "gemini", client: getGeminiClient(), model: String(process.env.GEMINI_MODEL || "").trim() || DEFAULT_GEMINI_MODEL }
+    ]
   });
 }
 
@@ -388,6 +426,10 @@ app.get("/api/cf/health", (_req, res) => {
     ok: true,
     configured: getCloudflareClient().isConfigured(),
     model: DEFAULT_NARRATION_MODEL,
+    // 체인 전체를 그대로 보여 준다 — 어떤 제공처가 어떤 순서로 있고 각각 설정이
+    // 됐는지. 폴백은 평소에 안 보이므로(주 제공처가 살아 있는 동안은 한 번도
+    // 안 불린다), 정작 필요한 날에 키가 비어 있었다는 걸 그때 알게 되면 늦다.
+    providers: getNarrationClient().describe(),
     budget: turnBudget.snapshot()
   });
 });
@@ -435,7 +477,7 @@ app.post("/api/turn", async (req, res) => {
       cards: loaded.cards,
       session,
       userInput,
-      client: getCloudflareClient(),
+      client: getNarrationClient(),
       model,
       budget: turnBudget,
       onNarration: (delta) => { if (sse) sse.send("narration", { delta }); },
@@ -451,6 +493,14 @@ app.post("/api/turn", async (req, res) => {
   }
 
   if (abort.signal.aborted) return;
+
+  // 폴백이 실제로 쓰였으면 남긴다. 플레이어 화면에는 아무 일도 없어 보이지만
+  // (그게 폴백의 목적이다), 주 제공처가 왜 답하지 못했는지는 운영자가 알아야
+  // 한다 — 할당이 말랐는지, 토큰이 잘못됐는지는 대응이 전혀 다르다.
+  if (result.ok && result.provider_attempts) {
+    const trail = result.provider_attempts.map((item) => `${item.provider}=${item.error_code}`).join(", ");
+    console.warn(`[turn] 폴백 사용: ${trail} → ${result.provider}`);
+  }
 
   if (!result.ok) {
     const body = errorBody(result.error_code, result.message, result.retryable);
@@ -474,7 +524,11 @@ app.post("/api/turn", async (req, res) => {
     // 빠뜨리고 있었다. play.html의 게이지/트리거 UI는 이 두 필드 없이는 아무것도
     // 그릴 수 없다(sim 자체는 session.sim에 이미 실려 있다).
     judge_unavailable: result.judge_unavailable,
-    last_change: result.last_change
+    last_change: result.last_change,
+    // 이 턴을 실제로 쓴 제공처. Cloudflare가 아니면 budget_unknown이 함께 true가
+    // 되는데(Neuron은 Cloudflare의 단위다 — turn.js 참고), 이 필드가 있어야 UI가
+    // "단가를 모른다"와 "Cloudflare가 아니라 무료 폴백이 썼다"를 구분해 보여 준다.
+    provider: result.provider
   };
   if (sse) {
     sse.send("done", body);

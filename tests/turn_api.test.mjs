@@ -84,6 +84,12 @@ test("GET /api/cf/health: 설정 여부만 알리고 비밀을 싣지 않는다"
     assert.equal(body.configured, true);
     assert.equal(body.model, "@cf/meta/llama-3.3-70b-instruct-fp8-fast");
     assert.equal(body.budget.free_per_day, 10000);
+    // 폴백 체인은 평소에 한 번도 안 불리므로, 설정 여부를 여기서 볼 수 있어야
+    // 한다 — 정작 할당이 마른 날에 키가 비어 있었다는 걸 그때 알면 늦다.
+    assert.deepEqual(body.providers.map((item) => item.provider), ["cloudflare", "gemini"]);
+    assert.equal(body.providers[0].configured, true);
+    // 이 테스트 파일은 GEMINI_API_KEY를 세팅하지 않는다 — 미설정으로 보여야 한다.
+    assert.equal(body.providers[1].configured, false);
     const text = JSON.stringify(body);
     assert.ok(!text.includes("tok-secret"), "API 토큰이 응답에 샜다");
     assert.ok(!text.includes("acc-test"), "account id가 응답에 샜다");
@@ -113,6 +119,98 @@ test("POST /api/turn: JSON 모드로 턴을 돌려준다", async () => {
   } finally {
     server.close();
     fake.server.close();
+    delete process.env.CF_API_BASE;
+  }
+});
+
+/** Gemini SSE 대역의 본문. 서술 + 선택지 블록을 두 프레임에 나눠 보낸다. */
+const GEMINI_SSE_BODY = [
+  `data: ${JSON.stringify({
+    candidates: [{ content: { parts: [{ text: "등대 불빛이 한 번 꺼졌다.\n\n" }] } }]
+  })}\n\n`,
+  `data: ${JSON.stringify({
+    candidates: [{ content: { parts: [{ text: "<선택지>\n1. 가\n2. 나\n3. 다" }] }, finishReason: "STOP" }],
+    usageMetadata: { promptTokenCount: 3650, candidatesTokenCount: 500, totalTokenCount: 4150 }
+  })}\n\n`
+].join("");
+
+/** Cloudflare가 하루 할당(code 3036)을 소진했을 때 실제로 보내는 모양. */
+function quotaExhausted(res) {
+  res.statusCode = 429;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({
+    success: false,
+    errors: [{ code: 3036, message: "Account limited" }]
+  }));
+}
+
+test("POST /api/turn: Cloudflare 할당이 마르면 Gemini가 턴을 이어 받는다", async () => {
+  const cf = await startFakeCloudflare((_req, res) => quotaExhausted(res));
+  const gemini = await startFakeCloudflare((req, res) => {
+    // 폴백은 자기 모델을 써야 한다 — 호출부가 넘긴 Cloudflare 모델 이름이
+    // 그대로 오면 실제 Gemini에서는 404다(fallback.js의 modelFor 참고).
+    assert.ok(req.url.includes("/models/gemini-2.5-flash:streamGenerateContent"), `폴백 URL이 이상하다: ${req.url}`);
+    assert.equal(req.headers["x-goog-api-key"], "gem-secret");
+    res.setHeader("Content-Type", "text/event-stream");
+    res.end(GEMINI_SSE_BODY);
+  });
+  process.env.CF_API_BASE = cf.url;
+  process.env.GEMINI_API_BASE = gemini.url;
+  process.env.GEMINI_API_KEY = "gem-secret";
+
+  const { server, port } = await listen();
+  try {
+    // 장부는 프로세스 전역이라 앞선 테스트가 이미 쓴 양이 남아 있다. 절대값이
+    // 아니라 "이 턴이 얼마를 더했는가"를 본다 — 더한 값이 0이어야 한다.
+    const before = await (await fetch(`http://127.0.0.1:${port}/api/cf/health`)).json();
+
+    const response = await post(port, {
+      session: { session_id: "s-fallback", world_id: "demo" },
+      user_input: "옆에 선다"
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.turn.narration, "등대 불빛이 한 번 꺼졌다.");
+    assert.deepEqual(body.turn.choices, ["가", "나", "다"]);
+    assert.equal(body.provider, "gemini");
+    // 실제로 답한 모델로 기록한다 — 요청한 Cloudflare 모델 이름이 아니다.
+    assert.equal(body.turn.model, "gemini-2.5-flash");
+    // Neuron은 Cloudflare의 단위다. Gemini가 쓴 양은 그 장부의 대상이 아니므로
+    // 0으로 적지 않고 "모른다"고 알린다(turn.js·budget.js의 원칙).
+    assert.equal(body.budget_unknown, true);
+    assert.equal(body.budget.used, before.budget.used, "Gemini 턴이 Neuron 장부를 움직였다");
+    const text = JSON.stringify(body);
+    assert.ok(!text.includes("gem-secret"), "Gemini 키가 응답에 샜다");
+  } finally {
+    server.close();
+    cf.server.close();
+    gemini.server.close();
+    delete process.env.CF_API_BASE;
+    delete process.env.GEMINI_API_BASE;
+    delete process.env.GEMINI_API_KEY;
+  }
+});
+
+test("POST /api/turn: GEMINI_API_KEY가 없으면 Cloudflare 실패가 그대로 나온다", async () => {
+  const cf = await startFakeCloudflare((_req, res) => quotaExhausted(res));
+  process.env.CF_API_BASE = cf.url;
+
+  const { server, port } = await listen();
+  try {
+    const response = await post(port, {
+      session: { session_id: "s-noquota", world_id: "demo" },
+      user_input: "옆에 선다"
+    });
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.equal(body.error_code, "QUOTA_EXHAUSTED");
+    // 폴백이 없으니 "폴백도 모두 실패" 같은 군더더기가 붙지 않는다 —
+    // 메시지는 지금까지와 똑같아야 한다.
+    assert.ok(!body.message.includes("폴백"));
+  } finally {
+    server.close();
+    cf.server.close();
     delete process.env.CF_API_BASE;
   }
 });

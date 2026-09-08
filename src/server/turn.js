@@ -3,7 +3,7 @@
 /**
  * 턴 오케스트레이터.
  *
- * 한 턴은 두 호출이다 — ①서술 생성(Cloudflare, 스트리밍)과 ②판정(로컬 Ollama, 구조화
+ * 한 턴은 두 호출이다 — ①서술 생성(Cloudflare→Gemini 폴백 체인, 스트리밍)과 ②판정(로컬 Ollama, 구조화
  * 출력). ①이 끝나 스트림이 화면에 다 보인 "다음에" ②를 돈다 — 판정이 독자가 글을
  * 보는 속도를 늦추면 안 되기 때문이다(비용 계량이 스트림 이후에 도는 것과 같은
  * 자리). ②는 judgeClient가 주어졌을 때만 돈다: 옛 호출부(judgeClient 없이 부르는
@@ -141,7 +141,19 @@ async function runTurn({
   const estimated = !generated.usage;
   const inputTokens = generated.usage ? generated.usage.prompt_tokens : estimatedInputTokens;
   const outputTokens = generated.usage ? generated.usage.completion_tokens : estimateTokens(generated.text);
-  const recorded = ledger.record({ model, inputTokens, outputTokens });
+
+  // 요청한 모델이 아니라 **실제로 답한** 모델로 계량하고 기록한다. 폴백 체인
+  // (llm/fallback.js)이 Cloudflare 대신 Gemini로 넘어갔다면 둘은 다르다. 요청한
+  // 이름으로 적으면 Gemini가 쓴 글을 Cloudflare 단가로 장부에 올리게 된다.
+  // 폴백을 안 쓰는 옛 호출부는 generated.model이 없으니 지금까지와 똑같다.
+  //
+  // 결과적으로 Cloudflare가 아닌 제공처가 답한 턴은 budget_unknown: true가 된다 —
+  // budget.js의 가격표에 그 모델이 없기 때문이다. 이건 버그가 아니라 사실이다.
+  // Neuron은 Cloudflare의 단위이고, Gemini 무료 티어가 쓴 양은 Neuron으로 잴 수
+  // 없다. "모르는 값을 0으로 적지 않는다"는 budget.js의 원칙 그대로다. 무엇이
+  // 답했는지는 아래 provider로 따로 알린다.
+  const servedModel = generated.model || model;
+  const recorded = ledger.record({ model: servedModel, inputTokens, outputTokens });
 
   const turn = sessionApi.makeTurn({
     index: sessionApi.nextTurnIndex(session),
@@ -149,7 +161,7 @@ async function runTurn({
     user_input: input,
     narration: parsed.narration,
     choices: parsed.choices,
-    model,
+    model: servedModel,
     usage: {
       prompt_tokens: inputTokens,
       completion_tokens: outputTokens,
@@ -192,6 +204,16 @@ async function runTurn({
     // recorded.neurons가 null이면 단가를 몰라 계량하지 못했다는 뜻이다(budget.js 참고).
     // 이걸 호출부가 놓치면 미터는 그대로인데 Cloudflare는 실제로 과금한다 — 무료 턴처럼 보이는 유료 턴.
     budget_unknown: recorded.neurons === null,
+    // 이 턴을 실제로 쓴 제공처. 폴백 체인을 안 쓰는 호출부에서는 null이다
+    // ("Cloudflare였다"와 "누구였는지 이 경로는 모른다"는 다르다). UI는 이 값으로
+    // budget_unknown이 "단가를 모른다"가 아니라 "Cloudflare가 아니었다"임을 구분한다.
+    provider: generated.provider || null,
+    // 이 턴이 폴백까지 내려오면서 지나친 실패들. 성공한 턴에서는 플레이어에게
+    // 아무 일도 없어 보이지만, 주 제공처가 왜 답하지 못했는지는 운영자가 알아야
+    // 한다(특히 AUTH_FAILED처럼 사람이 고쳐야 하는 것). server.js가 로그로 남긴다.
+    provider_attempts: Array.isArray(generated.attempts) && generated.attempts.length > 0
+      ? generated.attempts.map((item) => ({ provider: item.provider, error_code: item.error_code }))
+      : null,
     truncated: Boolean(generated.truncated),
     // 판정 결과 — step 3의 UI가 "왜" 게이지가 움직였는지 보여줄 수 있도록 그대로 얹는다.
     sim: simState,
