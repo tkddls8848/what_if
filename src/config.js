@@ -353,7 +353,7 @@ export const PERIOD_TERM_LEXICON = [
   { term: "유곽", aliases: ["유곽"], category: "class_reproduction", era: "일제강점기", references: [KO_WIKI("유곽")] },
   { term: "다방", aliases: ["다방", "끽다점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("다방")] },
 
-  // ── doc_nextsession/README.md 제품 방향의 나머지 작품을 넣을 때를 위한 seed ──
+  // ── doc/README.md 제품 방향의 나머지 작품을 넣을 때를 위한 seed ──
   { term: "화신상회", aliases: ["화신상회", "화신백화점"], category: "modern_institution", era: "일제강점기", references: [KO_WIKI("화신백화점")] },
   { term: "인력거", aliases: ["인력거", "인력거꾼"], category: "erasure", era: "일제강점기", references: [KO_WIKI("인력거")] },
   { term: "전당포", aliases: ["전당포"], category: "money", era: "일제강점기", references: [KO_WIKI("전당포")] },
