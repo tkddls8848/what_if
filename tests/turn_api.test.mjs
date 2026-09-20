@@ -428,35 +428,66 @@ test("POST /api/turn: 업스트림 429는 502와 RATE_LIMITED로 나간다", asy
   }
 });
 
-test("POST /api/turn: 장면이 바뀌면 scene 이벤트를 보내고, 같은 장면은 캐시에서 온다(이미지 API 재호출 없음)", async () => {
-  // 장면 블록을 맨 앞에 둔다 — narrator가 실제로 만드는 순서다. 예전 분할기는
-  // 첫 마커에서 영구히 멈추는 방식이라 이 순서에서 narration 이벤트가 통째로
-  // 비었다(2회차 수정에서 고친 결함). 이 자리에서 그 순서로 다시 확인한다.
-  // visual 줄(영어)이 있어야 scene.resolveScene이 이미지를 실제로 만든다(A4:
-  // visual이 없으면 한국어로 대체하지 않고 건너뛴다 — src/server/scene.js 참고).
-  const SCENE_SSE_BODY = [
-    'data: {"response":"<장면>\\n장소: 3학년 2반 교실\\n시간: 밤\\n날씨: 비\\nvisual: empty Korean high school classroom at night, fluorescent light on rows of desks, rain streaking the windows\\n</장면>\\n"}\n\n',
-    'data: {"response":"복도 끝에서 발소리가 멈췄다.\\n\\n"}\n\n',
-    'data: {"response":"<선택지>\\n1. 가\\n2. 나\\n3. 다"}\n\n',
-    'data: {"response":"","usage":{"prompt_tokens":3650,"completion_tokens":500,"total_tokens":4150}}\n\n',
-    "data: [DONE]\n\n"
-  ].join("");
+// --- 장면 판정과 배경 이미지 (미술감독 → 이미지) ---
+//
+// 서술자는 더 이상 장면을 쓰지 않는다. 장면은 서술이 끝난 뒤 도는 Jev 호출이
+// 정하고, 그 결과가 바뀌었을 때만 이미지가 만들어진다. 여기서는 그 배선이
+// server.js의 SSE까지 실제로 이어지는지 본다(단위 테스트만으로는 안 잡히는 경로).
 
-  let imageCalls = 0;
-  // 실제 flux-1-schnell은 JPEG를 돌려준다(매직 바이트 FF D8 FF, base64로 "/9j/"로
-  // 시작) — scene.js가 응답 바이트에서 형식을 감지해 확장자를 정하므로, 가짜
-  // 응답도 진짜 매직 바이트를 실어야 한다("QkFTRTY0"처럼 임의의 문자열을 base64로
-  // 감싼 값은 이제 형식 미상으로 거부된다).
-  const fake = await startFakeCloudflare((req, res) => {
+/** demo 세계관의 3학년 2반 교실을 확신 있게 고르는 Jev 응답(실물 봉투 모양). */
+function jevAnswer(locationId, time, weather, confidence = 0.96) {
+  return {
+    success: true,
+    errors: [],
+    messages: [],
+    result: {
+      state: "Completed",
+      gatewayMetadata: { keySource: "Unified" },
+      result: {
+        model: "jev-1.13.0",
+        answers: {
+          place: { type: "choice", choice: locationId, confidence, probabilities: { [locationId]: confidence } },
+          time: { type: "choice", choice: time, confidence, probabilities: { [time]: confidence } },
+          weather: { type: "choice", choice: weather, confidence, probabilities: { [weather]: confidence } }
+        },
+        usage: { input_tokens: 640, output_tokens: 124 }
+      }
+    }
+  };
+}
+
+/**
+ * Workers AI 대역 — 이제 세 종류의 요청을 받는다.
+ *   1. 이미지: .../ai/run/@cf/black-forest-labs/flux-1-schnell
+ *   2. 장면 판정: .../ai/run          (모델을 바디에 싣는 통합 엔드포인트)
+ *   3. 서술: .../ai/run/@cf/meta/...  (SSE)
+ * 1번을 먼저 걸러야 한다 — 이미지 URL도 "/ai/run"을 포함한다.
+ */
+function fakeWorkersAi({ sseBody, jev, onImage }) {
+  return (req, res) => {
     if (req.url.includes("flux-1-schnell")) {
-      imageCalls += 1;
+      if (onImage) onImage();
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ result: { image: "/9j/4AAQSkZJRg==" } }));
       return;
     }
+    if (/\/ai\/run\/?(\?.*)?$/.test(req.url)) {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(jev));
+      return;
+    }
     res.setHeader("Content-Type", "text/event-stream");
-    res.end(SCENE_SSE_BODY);
-  });
+    res.end(sseBody);
+  };
+}
+
+test("POST /api/turn: 장면이 바뀌면 scene 이벤트를 보내고, 같은 장면은 다시 그리지 않는다", async () => {
+  let imageCalls = 0;
+  const fake = await startFakeCloudflare(fakeWorkersAi({
+    sseBody: SSE_BODY,
+    jev: jevAnswer("classroom_3_2", "밤", "비"),
+    onImage: () => { imageCalls += 1; }
+  }));
   process.env.CF_API_BASE = fake.url;
   const { server, port } = await listen();
   try {
@@ -466,41 +497,38 @@ test("POST /api/turn: 장면이 바뀌면 scene 이벤트를 보내고, 같은 �
     }, "text/event-stream");
     const firstText = await first.text();
 
-    // narration 이벤트들의 delta를 모아, 장면이 맨 앞이어도 그 뒤 서술이
-    // 통째로 사라지지 않고 실제로 스트림에 실리는지 직접 확인한다(단위 테스트
-    // 만으로는 안 잡히는 경로 — server.js의 SSE 배선까지 다 지나야 나온다).
     const narrationDeltas = [...firstText.matchAll(/event: narration\ndata: (\{.*\})/g)]
       .map((m) => JSON.parse(m[1]).delta)
       .join("");
-    assert.notEqual(narrationDeltas, "", "장면이 맨 앞이면 narration 스트림이 통째로 비어버리는 결함이 있었다");
     assert.ok(narrationDeltas.includes("복도 끝에서 발소리가 멈췄다"), `서술이 스트림에 안 왔다: ${JSON.stringify(narrationDeltas)}`);
-    assert.ok(!narrationDeltas.includes("장소"), "장면 데이터가 서술 스트림에 샜다");
+    assert.ok(!narrationDeltas.includes("<선택지>"), "선택지 마커가 서술 스트림에 샜다");
 
-    assert.ok(firstText.includes("event: scene"), "scene 이벤트가 안 왔다");
-    assert.ok(!firstText.includes("<장면>"), "장면 마커가 스트림에 샜다");
-    assert.ok(!firstText.includes("<선택지>"), "선택지 마커가 스트림에 샜다");
+    assert.ok(firstText.includes("event: scene"), "첫 턴에 scene 이벤트가 안 왔다");
     assert.equal(imageCalls, 1);
 
-    // 같은 세계관·같은 장면으로 두 번째 턴 — 캐시 적중이라 이미지 API가 또
-    // 불리면 안 된다.
-    const second = await post(port, {
-      session: { session_id: "s1", world_id: "demo" },
-      user_input: "다시 한번"
-    }, "text/event-stream");
+    // 세션의 current_scene이 첫 턴에서 정해졌다. 두 번째 턴에 같은 답이 오면
+    // 장면이 안 바뀐 것이므로 **이미지를 아예 부르지 않는다** — 캐시 히트조차
+    // 필요 없다(설계 6절).
+    const done = [...firstText.matchAll(/event: done\ndata: (\{[\s\S]*?\})\n\n/g)].pop();
+    assert.ok(done, "done 이벤트가 없다");
+    const session = JSON.parse(done[1]).session;
+    assert.equal(session.current_scene.location_id, "classroom_3_2");
+
+    const second = await post(port, { session, user_input: "다시 한번" }, "text/event-stream");
     const secondText = await second.text();
+    assert.ok(!secondText.includes("event: scene"), "장면이 안 바뀌었는데 scene 이벤트를 보냈다");
+    assert.equal(imageCalls, 1, "장면이 안 바뀌었는데 이미지를 또 그렸다");
 
-    assert.ok(secondText.includes("event: scene"));
-    assert.equal(imageCalls, 1, "캐시된 장면인데 이미지 API를 또 불렀다");
-
-    const hash = sceneHash({ worldId: "demo", scene: { place: "3학년 2반 교실", time: "밤", weather: "비" } });
-    // 파일은 SCENE_ROOT(임시 디렉터리) 아래에 써져야 한다 — 실제 저장소가 아니라.
+    const hash = sceneHash({
+      worldId: "demo",
+      scene: { location_id: "classroom_3_2", time: "밤", weather: "비" }
+    });
     assert.ok(fs.existsSync(path.join(TEST_SCENES_DIR, "demo", `${hash}.jpg`)), "장면 이미지 파일이 안 써졌다");
-    // 오염 가드: SCENE_ROOT를 돌렸으니 실제 저장소의 data/scenes/에는 이 턴이
-    // 아무것도 남기면 안 된다. 이게 이 파일의 핵심 회귀 가드다 — server.js가
-    // getSceneRoot() 대신 실수로 다시 ROOT를 하드코딩하면 여기서 즉시 깨진다.
+    // 오염 가드: SCENE_ROOT를 돌렸으니 실제 저장소의 data/scenes/에는 아무것도
+    // 남으면 안 된다. server.js가 getSceneRoot() 대신 ROOT를 하드코딩하면 여기서 깨진다.
     assert.ok(
       !fs.existsSync(path.join(REPO_SCENES_DIR, "demo", `${hash}.jpg`)),
-      "SCENE_ROOT를 무시하고 실제 저장소(data/scenes/)에 장면 이미지를 썼다 — 서버가 getSceneRoot() 대신 ROOT를 쓰고 있는지 확인하라"
+      "SCENE_ROOT를 무시하고 실제 저장소(data/scenes/)에 장면 이미지를 썼다"
     );
   } finally {
     server.close();
@@ -509,60 +537,105 @@ test("POST /api/turn: 장면이 바뀌면 scene 이벤트를 보내고, 같은 �
   }
 });
 
-test("POST /api/turn: 장면 이미지는 요청 시점의 SCENE_ROOT를 따른다 — 이 테스트 파일이 실제 저장소를 건드리지 않는다는 근거", async () => {
-  // 이 파일의 다른 모든 테스트는 파일 최상단에서 한 번 세팅한 SCENE_ROOT_DIR를
-  // 공유한다. 그 공유값이 우연히 ROOT와 같아져도(예: 리팩터 실수로 getSceneRoot()가
-  // 상수를 캐시해버리는 경우) 앞의 테스트들은 못 잡는다 — 여기서는 SCENE_ROOT를
-  // 파일 시작 이후에 "다시" 다른 임시 디렉터리로 바꿔, server.js가 매 요청마다
-  // process.env.SCENE_ROOT를 다시 읽는지(OLLAMA_URL/CF_API_BASE와 같은 요청-시점
-  // 패턴을 실제로 따르는지)를 직접 확인한다.
-  const overrideDir = fs.mkdtempSync(path.join(os.tmpdir(), "novel-if-scene-root-override-"));
-  const previousSceneRoot = process.env.SCENE_ROOT;
-  process.env.SCENE_ROOT = overrideDir;
-
-  const SCENE_SSE_BODY = [
-    'data: {"response":"<장면>\\n장소: 옥상\\n시간: 낮\\n날씨: 맑음\\nvisual: empty rooftop under a clear sky, waist-high railing, distant city lights\\n</장면>\\n"}\n\n',
-    'data: {"response":"바람이 세게 불었다.\\n\\n"}\n\n',
-    'data: {"response":"<선택지>\\n1. 가\\n2. 나\\n3. 다"}\n\n',
-    'data: {"response":"","usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}\n\n',
-    "data: [DONE]\n\n"
-  ].join("");
-  const fake = await startFakeCloudflare((req, res) => {
-    if (req.url.includes("flux-1-schnell")) {
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ result: { image: "/9j/4AAQSkZJRg==" } }));
-      return;
-    }
-    res.setHeader("Content-Type", "text/event-stream");
-    res.end(SCENE_SSE_BODY);
-  });
+test("POST /api/turn: 장소가 바뀌면 다시 그리고, 캐시된 장면으로 돌아오면 이미지 API를 안 부른다", async () => {
+  let imageCalls = 0;
+  // 앞 테스트가 이미 (classroom_3_2, 밤, 비)를 캐시에 써 뒀다. 같은 해시를 쓰면
+  // 첫 턴부터 캐시 히트라 "새로 그린다"를 못 본다 — 시간대를 달리해 키를 가른다.
+  let jev = jevAnswer("classroom_3_2", "자정", "비");
+  const fake = await startFakeCloudflare((req, res) => fakeWorkersAi({
+    sseBody: SSE_BODY,
+    jev,
+    onImage: () => { imageCalls += 1; }
+  })(req, res));
   process.env.CF_API_BASE = fake.url;
   const { server, port } = await listen();
   try {
-    const res = await post(port, {
-      session: { session_id: "s-override", world_id: "demo" },
-      user_input: "옥상으로 간다"
-    }, "text/event-stream");
-    const text = await res.text();
-    assert.ok(text.includes("event: scene"), "scene 이벤트가 안 왔다");
+    const r1 = await post(port, { session: { session_id: "s2", world_id: "demo" }, user_input: "a" }, "text/event-stream");
+    const t1 = await r1.text();
+    const s1 = JSON.parse([...t1.matchAll(/event: done\ndata: (\{[\s\S]*?\})\n\n/g)].pop()[1]).session;
+    assert.equal(imageCalls, 1);
 
-    const hash = sceneHash({ worldId: "demo", scene: { place: "옥상", time: "낮", weather: "맑음" } });
-    // 이 요청이 SCENE_ROOT를 다시 읽었다면 파일은 overrideDir에 있어야 한다.
-    assert.ok(
-      fs.existsSync(path.join(overrideDir, "data", "scenes", "demo", `${hash}.jpg`)),
-      "server.js가 요청 시점에 SCENE_ROOT를 다시 읽지 않는다 — 새 오버라이드 디렉터리에 안 써졌다"
-    );
-    // 그리고 어느 쪽 SCENE_ROOT를 쓰든 실제 저장소는 절대 건드리면 안 된다.
-    assert.ok(
-      !fs.existsSync(path.join(REPO_SCENES_DIR, "demo", `${hash}.jpg`)),
-      "SCENE_ROOT 오버라이드에도 실제 저장소(data/scenes/)에 장면 이미지를 썼다"
-    );
+    // 복도로 이동 → 새 그림
+    jev = jevAnswer("hallway", "자정", "비");
+    const r2 = await post(port, { session: s1, user_input: "b" }, "text/event-stream");
+    const t2 = await r2.text();
+    const s2 = JSON.parse([...t2.matchAll(/event: done\ndata: (\{[\s\S]*?\})\n\n/g)].pop()[1]).session;
+    assert.ok(t2.includes("event: scene"), "장소가 바뀌었는데 scene 이벤트가 없다");
+    assert.equal(s2.current_scene.location_id, "hallway");
+    assert.equal(imageCalls, 2);
+
+    // 교실로 복귀 → 장면은 바뀌었지만 이미 그린 적이 있으므로 캐시에서 온다.
+    // 이게 location_id를 캐시 키로 쓰는 이유다 — 라벨이 흔들려도 같은 파일이다.
+    jev = jevAnswer("classroom_3_2", "자정", "비");
+    const r3 = await post(port, { session: s2, user_input: "c" }, "text/event-stream");
+    const t3 = await r3.text();
+    assert.ok(t3.includes("event: scene"), "장소가 되돌아왔는데 scene 이벤트가 없다");
+    assert.equal(imageCalls, 2, "재방문인데 이미지 API를 또 불렀다 — 캐시가 안 먹었다");
   } finally {
     server.close();
     fake.server.close();
     delete process.env.CF_API_BASE;
-    process.env.SCENE_ROOT = previousSceneRoot;
-    fs.rmSync(overrideDir, { recursive: true, force: true });
+  }
+});
+
+test("POST /api/turn: 신뢰도가 낮으면 장면을 유지하고 이미지를 그리지 않는다", async () => {
+  let imageCalls = 0;
+  const fake = await startFakeCloudflare(fakeWorkersAi({
+    sseBody: SSE_BODY,
+    // 서술이 authored되지 않은 곳으로 넘어갔다 — 장소 신뢰도가 무너진다.
+    jev: jevAnswer("hallway", "밤", "비", 0.3),
+    onImage: () => { imageCalls += 1; }
+  }));
+  process.env.CF_API_BASE = fake.url;
+  const { server, port } = await listen();
+  try {
+    const response = await post(port, {
+      session: { session_id: "s3", world_id: "demo" },
+      user_input: "옥상으로 나간다"
+    }, "text/event-stream");
+    const text = await response.text();
+
+    assert.ok(text.includes("event: done"), "턴 자체는 성공해야 한다");
+    assert.ok(!text.includes("event: scene"), "확신이 없는데 그림을 바꿨다");
+    assert.equal(imageCalls, 0);
+  } finally {
+    server.close();
+    fake.server.close();
+    delete process.env.CF_API_BASE;
+  }
+});
+
+test("POST /api/turn: 장면 판정이 실패해도 턴은 성공하고 scene_unavailable로 알린다", async () => {
+  // 게이트웨이 잔액이 없으면 402가 온다. 배경 그림 하나 때문에 턴을 잃지 않는다.
+  const fake = await startFakeCloudflare((req, res) => {
+    if (/\/ai\/run\/?(\?.*)?$/.test(req.url)) {
+      res.statusCode = 402;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({
+        success: false,
+        errors: [{ code: 2021, message: "Insufficient balance; add money to your gateway or use BYOK" }]
+      }));
+      return;
+    }
+    res.setHeader("Content-Type", "text/event-stream");
+    res.end(SSE_BODY);
+  });
+  process.env.CF_API_BASE = fake.url;
+  const { server, port } = await listen();
+  try {
+    const response = await post(port, {
+      session: { session_id: "s4", world_id: "demo" },
+      user_input: "옆에 선다"
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200, "장면 판정 실패로 턴을 실패시키면 안 된다");
+    assert.equal(body.scene_unavailable, true, "모르는 값을 없음으로 적지 않는다");
+    assert.deepEqual(body.turn.choices, ["가", "나", "다"], "서술과 선택지는 정상이어야 한다");
+  } finally {
+    server.close();
+    fake.server.close();
+    delete process.env.CF_API_BASE;
   }
 });
 

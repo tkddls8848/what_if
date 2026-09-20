@@ -29,9 +29,12 @@ const world = {
   tone: "차분하고 건조하다.",
   visual_style: "muted anime-style background art, cool blue-grey palette, soft fluorescent light, wet reflections"
 };
-// place/time/weather는 캐시 키·화면 라벨(한국어)이고, visual만 이미지 프롬프트의
-// 재료(영어)다 — Problem A의 수정 전체가 이 분리에 달려 있다.
+// location_id/time/weather가 캐시 키이고, place는 화면 라벨(한국어)이며, visual만
+// 이미지 프롬프트의 재료(영어)다 — Problem A의 수정 전체가 이 분리에 달려 있다.
+// location_id와 visual은 둘 다 세계관 파일에 authored된 값을 director가 조회해
+// 실어 준 것이지, 서술자가 매 턴 생성한 것이 아니다.
 const scene = {
+  location_id: "classroom_3_2",
   place: "3학년 2반 교실",
   time: "밤",
   weather: "비",
@@ -151,12 +154,22 @@ test("sceneHash/seedFromHash: 같은 world_id+장면은 같은 키와 시드를 
   assert.ok(Number.isInteger(seedFromHash(a)) && seedFromHash(a) > 0, "시드는 양의 정수여야 한다");
 });
 
-test("sceneHash: 장소·시간·날씨 중 하나만 달라도 다른 키를 낸다", () => {
+test("sceneHash: 장소 id·시간·날씨 중 하나만 달라도 다른 키를 낸다", () => {
   const base = sceneHash({ worldId: "demo", scene });
-  assert.notEqual(base, sceneHash({ worldId: "demo", scene: { ...scene, place: "옥상" } }));
+  assert.notEqual(base, sceneHash({ worldId: "demo", scene: { ...scene, location_id: "rooftop" } }));
   assert.notEqual(base, sceneHash({ worldId: "demo", scene: { ...scene, time: "낮" } }));
   assert.notEqual(base, sceneHash({ worldId: "demo", scene: { ...scene, weather: "맑음" } }));
   assert.notEqual(base, sceneHash({ worldId: "other-world", scene }));
+});
+
+// 이게 이 설계 전체가 고치려던 고장이다. 예전 캐시 키는 서술자가 매 턴 새로
+// 생성한 한국어 자유 문자열(place)이었다 — 같은 곳을 "교실"과 "3학년 2반 교실"로
+// 다르게 부르면 다른 해시가 되어 같은 곳에 새 그림이 생겼다. 이제 키의 재료는
+// 닫힌 집합의 id라, 라벨이 어떻게 흔들려도 같은 곳은 같은 파일이다.
+test("sceneHash: 화면 라벨(place)이 달라도 location_id가 같으면 같은 키다", () => {
+  const a = sceneHash({ worldId: "demo", scene });
+  const b = sceneHash({ worldId: "demo", scene: { ...scene, place: "교실" } });
+  assert.equal(a, b);
 });
 
 test("resolveScene: 같은 세계관에 다른 장면은 다른 파일을 만든다", async () => {
@@ -166,7 +179,7 @@ test("resolveScene: 같은 세계관에 다른 장면은 다른 파일을 만든
     const first = await resolveScene({ world, scene, client, budget: budget(), rootDir: dir });
     const second = await resolveScene({
       world,
-      scene: { place: "옥상", time: "낮", weather: "맑음", visual: "empty rooftop under a clear sky, waist-high railing, distant city lights" },
+      scene: { location_id: "rooftop", place: "옥상", time: "낮", weather: "맑음", visual: "empty rooftop under a clear sky, waist-high railing, distant city lights" },
       client, budget: budget(), rootDir: dir
     });
     assert.notEqual(first.url, second.url);

@@ -3,8 +3,8 @@
 /**
  * 장면 배경 이미지 서비스.
  *
- * 장면이 바뀔 때만(narration.parseScene이 null이 아닌 것을 돌려줄 때만) 호출된다.
- * 캐시 키는 world_id + 장소 + 시간 + 날씨의 해시다 — 같은 교실로 돌아오면 같은
+ * 장면이 바뀔 때만(src/server/director.js가 changed:true를 돌려줄 때만) 호출된다.
+ * 캐시 키는 world_id + 장소 id + 시간 + 날씨의 해시다 — 같은 교실로 돌아오면 같은
  * 파일을 그대로 돌려준다(새로 그리지 않는다). "같은 그림"이 "비슷한 그림"보다
  * 강한 일관성을 준다는 것이 이 기능 전체의 설계 근거다.
  *
@@ -12,10 +12,12 @@
  * 않는다 — 애초에 프롬프트를 만들 재료로 넘기지 않으면 "인물이 샌다"는 사고 자체가
  * 구조적으로 불가능하다.
  *
- * CommonJS. src/core/를 참조하지 않는다(장면 파싱은 turn.js가 narration.js로 이미
- * 끝내고 {place,time,weather,visual}만 여기로 넘긴다) — 그래서 이 파일은 await
- * import()가 필요 없다. place/time/weather는 캐시 키·화면 라벨용 한국어이고,
- * visual만 이미지 프롬프트의 재료(영어)다 — buildPrompt 참고.
+ * CommonJS. src/core/를 참조하지 않는다(장면 판정은 turn.js가 director.js로 이미
+ * 끝내고 {location_id,place,time,weather,visual}만 여기로 넘긴다) — 그래서 이 파일은 await
+ * import()가 필요 없다. location_id/time/weather가 캐시 키이고, place는 화면
+ * 라벨용 한국어이며, visual만 이미지 프롬프트의 재료(영어)다 — buildPrompt 참고.
+ * visual은 이제 매 턴 생성되는 값이 아니라 세계관 파일에 authored된 문장을
+ * director가 조회해 실어 준 것이다.
  *
  * error_code 어휘는 다른 모듈과 같다: INVALID_ARGUMENT | CONNECTION_FAILED |
  * (client.generate가 돌려주는 그대로) AUTH_FAILED | QUOTA_EXHAUSTED | CAPACITY |
@@ -90,16 +92,28 @@ function detectImageExtension(buffer) {
 }
 
 /**
- * 캐시 키. world_id + 장소 + 시간 + 날씨 넷을 NUL로 구분해 해시한다 — 필드
+ * 캐시 키. world_id + **장소 id** + 시간 + 날씨 넷을 NUL로 구분해 해시한다 — 필드
  * 구분자를 두지 않고 그냥 이어붙이면 "교실"+"밤"과 "교"+"실밤"이 같은 해시가 되는
  * 사고가 날 수 있다(src/server/cache.js의 makeKey와 같은 이유로 같은 관용을 쓴다).
+ *
+ * **재료가 한국어 place가 아니라 location_id인 것이 이 함수의 요점이다.** 예전에는
+ * 서술자가 매 턴 새로 생성한 자유 문자열을 그대로 해싱했다 — 같은 곳을 이번 턴에
+ * "교실", 다음 턴에 "3학년 2반 교실"이라고 부르면 다른 해시가 되어 **같은 곳에 새
+ * 그림**이 생겼다. 이 파일 머리주석의 "같은 그림이 비슷한 그림보다 강한 일관성을
+ * 준다"가 구조적으로 깨지던 자리다. location_id는 세계관 파일에 authored된 닫힌
+ * 집합의 원소라(core/card.js의 normalizeStageSet) 흔들리지 않는다.
+ *
+ * time/weather는 그대로 한국어다 — 이쪽도 세계관 파일에 authored된 닫힌 집합이라
+ * 같은 낱말이 매번 같은 낱말로 온다. 셋 다 키에 들어가야 "같은 교실의 저녁과
+ * 자정"이 다른 그림이 된다(세계관당 가능한 배경이 그래서
+ * |locations| x |times| x |weathers|로 유한하다).
  */
 function sceneHash({ worldId, scene }) {
   return crypto
     .createHash("sha256")
     .update(String(worldId || ""))
     .update("\0")
-    .update(String(scene.place || ""))
+    .update(String(scene.location_id || ""))
     .update("\0")
     .update(String(scene.time || ""))
     .update("\0")
@@ -141,12 +155,17 @@ function seedFromHash(hash) {
  *     아니었다 — 그림에는 처음부터 노이즈였다.
  *   - 장면의 place/time/weather(한국어, 화면 라벨이자 캐시 키)도 쓰지 않는다.
  *
- * 대신 두 영어 재료만 쓴다: world.visual_style(세계관 단위로 저자가 미리 써 둔
- * 아트 디렉션 — 화풍·팔레트·톤)과 scene.visual(narrator가 이번 장면에 대해 매
- * 턴 새로 쓰는 구체적 시각 묘사, src/core/narration.js의 VISUAL_LINE 참고).
- * scene.visual은 이번 턴에 실제로 바뀐 사실이라 자르지 않는다 — 2048자를 넘기면
- * world.visual_style 쪽만 잘라낸다(어차피 세계관 전체에 걸친 요약이라 좀 잘려도
- * 뜻이 크게 상하지 않는다).
+ * 대신 두 영어 재료만 쓴다. 둘 다 **사람이 미리 써 둔 저작물**이고, 둘 다 매 턴
+ * 생성되지 않는다 — 그래서 그림이 맘에 안 들어 고치면 그 수정이 계속 남는다:
+ *
+ *   - world.visual_style — 세계관 단위의 아트 디렉션(화풍·팔레트·톤).
+ *   - scene.visual — 이 장소의 구체적 시각 묘사. 세계관 파일의
+ *     world.stage.locations[].visual에서 director가 location_id로 조회해 실어
+ *     준 값이다(core/card.js의 normalizeStageSet, src/server/director.js 참고).
+ *
+ * scene.visual은 이 장소를 이 장소이게 하는 재료라 자르지 않는다 — 2048자를
+ * 넘기면 world.visual_style 쪽만 잘라낸다(어차피 세계관 전체에 걸친 요약이라
+ * 좀 잘려도 뜻이 크게 상하지 않는다).
  *
  * 호출부(resolveScene)가 scene.visual이 비어 있을 때 이 함수를 아예 부르지
  * 않는 것으로 A4 폴백을 구현한다 — 여기서는 그 판단을 하지 않는다(순수 조립
@@ -221,7 +240,9 @@ async function resolveScene({ world, scene, client, budget, rootDir } = {}) {
     return errorResult("CONNECTION_FAILED", "이미지 클라이언트가 없습니다.", true);
   }
 
-  // A4 폴백: narrator가 <장면> 블록에 visual(영어 묘사)을 안 썼다. 여기서 한국어
+  // visual이 비었다. 이제 이 값은 생성물이 아니라 **조회값**이다 — 세계관 파일의
+  // world.stage.locations[]에서 이 장소에 visual을 안 써 둔 것이고, 모델의 실수가
+  // 아니라 저작의 공백이다. 여기서 한국어
   // place/time/weather로 대체 조립하면 이 기능 전체의 존재 이유(영어 전용 프롬프트)가
   // 다시 깨지므로, 그 대신 이 장면의 이미지 생성을 통째로 건너뛴다 — 패널은 텍스트
   // placeholder로 남는다(server.js가 !ok 결과를 로그만 남기고 scene SSE를 보내지
@@ -233,7 +254,7 @@ async function resolveScene({ world, scene, client, budget, rootDir } = {}) {
   if (!visual) {
     return errorResult(
       "INVALID_ARGUMENT",
-      "장면에 visual(영어 시각 묘사)이 없어 이미지 생성을 건너뜁니다 — narrator가 <장면> 블록에 visual 줄을 빠뜨렸습니다.",
+      "장면에 visual(영어 시각 묘사)이 없어 이미지 생성을 건너뜁니다 — world.stage의 이 장소에 visual이 authored되지 않았습니다.",
       false
     );
   }

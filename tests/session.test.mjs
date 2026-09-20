@@ -306,9 +306,22 @@ test("normalizeSession: current_scene이 없으면(옛 세션) null이다", () =
 test("normalizeSession: 저장된 current_scene을 모양을 맞춰 보존한다", () => {
   const session = normalizeSession({
     world_id: "demo",
-    current_scene: { place: "3학년 2반 교실", time: "밤", weather: "비" }
+    current_scene: { location_id: "classroom_3_2", place: "3학년 2반 교실", time: "밤", weather: "비" }
   });
-  assert.deepEqual(session.current_scene, { place: "3학년 2반 교실", time: "밤", weather: "비" });
+  assert.deepEqual(session.current_scene, {
+    location_id: "classroom_3_2", place: "3학년 2반 교실", time: "밤", weather: "비"
+  });
+});
+
+// visual(이미지 프롬프트)은 세션에 담지 않는다 — 세계관 파일에 authored되어 있고
+// 매 턴 location_id로 다시 조회된다. 브라우저가 실어 보내도 버려야, 저작물이
+// 사용자 입력으로 되돌아와 이미지 프롬프트에 들어가는 경로가 생기지 않는다.
+test("normalizeSession: current_scene의 visual은 보존하지 않는다", () => {
+  const session = normalizeSession({
+    world_id: "demo",
+    current_scene: { location_id: "classroom_3_2", place: "교실", time: "밤", weather: "비", visual: "injected prompt" }
+  });
+  assert.equal(session.current_scene.visual, undefined);
 });
 
 test("normalizeSession: current_scene이 이상한 모양이면(문자열 등) null로 되돌린다", () => {
@@ -319,9 +332,9 @@ test("normalizeSession: current_scene이 이상한 모양이면(문자열 등) n
 test("normalizeSession: current_scene 필드가 문자열이 아니면 빈 문자열로 채운다", () => {
   const session = normalizeSession({
     world_id: "demo",
-    current_scene: { place: 123, time: null, weather: undefined }
+    current_scene: { location_id: [], place: 123, time: null, weather: undefined }
   });
-  assert.deepEqual(session.current_scene, { place: "", time: "", weather: "" });
+  assert.deepEqual(session.current_scene, { location_id: "", place: "", time: "", weather: "" });
 });
 
 test("normalizeSession: fired_hooks가 배열이 아니면 빈 배열로 되돌린다", () => {

@@ -62,10 +62,25 @@ function clampNumber(value, fallback) {
  * 아니거나(문자열, 배열, null 등) 아예 없으면 null로 되돌린다. null은 오류가
  * 아니라 "아직 장면이 정해지지 않았다"는 유효한 상태다(memory.js의 상태 블록이
  * 바로 이 신호로 첫 장면 여부를 판단한다).
+ *
+ * location_id는 배경 이미지의 캐시 키 재료이자(src/server/scene.js의 sceneHash)
+ * 다음 턴에 "장면이 바뀌었는가"를 비교하는 축이다(src/server/director.js의
+ * sameScene). place는 그 장소의 한국어 이름으로, 화면 라벨과 서술자의
+ * [현재 상태] 줄에만 쓴다.
+ *
+ * **visual은 여기 담지 않는다.** 그 값은 세계관 파일에 authored되어 있고 매 턴
+ * location_id로 다시 조회된다 — 세션에 실어 브라우저를 오가게 하면 저작물이
+ * 사용자 입력으로 되돌아오는 경로가 생기고, 그건 이미지 프롬프트에 그대로
+ * 들어가는 값이다.
  */
 function normalizeCurrentScene(raw) {
   if (!raw || typeof raw !== "object") return null;
-  return { place: str(raw.place), time: str(raw.time), weather: str(raw.weather) };
+  return {
+    location_id: str(raw.location_id),
+    place: str(raw.place),
+    time: str(raw.time),
+    weather: str(raw.weather)
+  };
 }
 
 /**
@@ -144,8 +159,9 @@ export function createSession({
     // 호감(카드별)·회복(전역) 두 축의 초기 상태. sim.js가 상태 모델을 소유하고
     // 여기서는 card_ids로부터 카드마다 0/0_stranger를 채운 초기값만 만든다.
     sim: createSimState({ cards: normalizedCardIds.map((id) => ({ card_id: id })) }),
-    // 새 세션에는 아직 정해진 장면이 없다. turn.js가 <장면> 블록을 파싱할 때마다
-    // 갱신한다 — memory.js의 상태 블록이 이 값으로 "장면이 바뀌었는가"의 기준을 삼는다.
+    // 새 세션에는 아직 정해진 장면이 없다. turn.js가 미술감독(server/director.js)의
+    // 판정으로 매 턴 갱신한다 — director가 이 값과 이번 턴 답을 비교해 "장면이
+    // 바뀌었는가"를 정하고, memory.js의 상태 블록이 서술자에게 여기가 어디인지 알린다.
     current_scene: null,
     // M4의 요약 체인이 채울 자리. 지금은 events[]/state_changes[]와 같은 이유로 비워 둔다.
     summary_chain: [],

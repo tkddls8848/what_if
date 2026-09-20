@@ -3,22 +3,28 @@
 /**
  * 턴 오케스트레이터.
  *
- * 한 턴은 두 호출이다 — ①서술 생성(Cloudflare→Gemini 폴백 체인, 스트리밍)과 ②판정(로컬 Ollama, 구조화
- * 출력). ①이 끝나 스트림이 화면에 다 보인 "다음에" ②를 돈다 — 판정이 독자가 글을
- * 보는 속도를 늦추면 안 되기 때문이다(비용 계량이 스트림 이후에 도는 것과 같은
- * 자리). ②는 judgeClient가 주어졌을 때만 돈다: 옛 호출부(judgeClient 없이 부르는
- * 테스트/서버 경로)는 지금까지와 똑같이 동작해야 한다.
+ * 한 턴은 세 호출이다 — ①서술 생성(Cloudflare→Gemini 폴백 체인, 스트리밍),
+ * ②판정(로컬 Ollama, 구조화 출력), ③장면 판정(Jev, 닫힌 선택지). ①이 끝나
+ * 스트림이 화면에 다 보인 "다음에" ②와 ③을 돈다 — 둘 다 독자가 글을 보는 속도를
+ * 늦추면 안 되기 때문이다(비용 계량이 스트림 이후에 도는 것과 같은 자리).
+ * ②는 judgeClient가, ③은 directorClient가 주어졌을 때만 돈다: 그 인자 없이 부르는
+ * 옛 호출부(테스트/서버 경로)는 지금까지와 똑같이 동작해야 한다.
+ *
+ * ②와 ③은 같은 이유로 서술자와 분리돼 있다 — 서술자에게 채점 기준(트리거 목록)이나
+ * 무대 목록(장소 id)을 보여주면 이야기가 그 목록에 맞춰진다(judge.js 머리주석).
  *
  * 흐름: 조립(core/memory) → 서술 호출(llm/cloudflare) → 가르기(core/narration) →
- * 계량(llm/budget) → 판정(server/judge, judgeClient가 있을 때만) → 반영(core/sim).
+ * 계량(llm/budget) → 판정(server/judge) → 반영(core/sim) → 장면 판정(server/director).
  * 이 파일은 순서만 안다 — 점수를 매기는 규칙도, 프롬프트 문구도 여기 없다.
  *
  * src/server/는 CommonJS, src/core/는 ESM이라 await import()로 접근한다
- * (선례: src/server/wikisource.js). judge.js는 같은 CommonJS라 require로 바로 접근한다.
+ * (선례: src/server/wikisource.js). judge.js/director.js는 같은 CommonJS라 require로
+ * 바로 접근한다.
  */
 
 const { estimateTokens, DEFAULT_NARRATION_MODEL } = require("../llm/budget");
 const judge = require("./judge");
+const director = require("./director");
 
 function errorResult(errorCode, message, retryable = false) {
   return { ok: false, error_code: errorCode, message, retryable };
@@ -80,6 +86,59 @@ async function runJudgment({ cards, protagonist, userInput, narration, simState,
   return { simState: state, judge_unavailable: false, last_change: lastChange };
 }
 
+/**
+ * 장면 판정 단계. directorClient가 없으면(기능을 아직 안 쓰는 호출부) 아무 일도
+ * 하지 않고 직전 장면을 그대로 돌려준다 — judgeClient와 같은 관용이다.
+ * "판정을 시도했지만 실패했다"와 "애초에 판정을 요청하지 않았다"는 다르므로,
+ * 후자는 scene_unavailable이 아니다.
+ *
+ * 실패했을 때 **턴은 성공시킨다.** 배경 그림 하나 때문에 턴을 잃지 않는다는 것이
+ * 지금 계약이고(README: "장면 배경 이미지는 실패해도 턴은 성공한 채 끝난다"),
+ * 별도 폴백 모델은 두지 않는다 — 두면 AGENTS.md의 "parallel old/new execution
+ * paths 금지"에 정면으로 걸리고, 배경 그림 하나 때문에 유지할 만한 복잡도가 아니다.
+ *
+ * 대신 모르는 것을 "없음"으로 적지 않는다 — scene_unavailable: true로 알린다
+ * (judge_unavailable과 같은 원칙).
+ */
+async function runDirection({ world, previousScene, narration, directorClient, confidenceThreshold, signal }) {
+  if (!directorClient) {
+    return { scene: previousScene || null, changed: false, scene_unavailable: false, low_confidence: false, answers: null };
+  }
+
+  const directed = await director.directScene({
+    world,
+    previousScene,
+    narration,
+    client: directorClient,
+    threshold: confidenceThreshold,
+    signal
+  });
+
+  if (!directed.ok) {
+    // 장면을 유지한다. 직전 장면이 있으면 화면은 그대로고, 없으면 배경이 없는
+    // 채로 턴이 끝난다 — 둘 다 턴 자체는 성공이다.
+    return {
+      scene: previousScene || null,
+      changed: false,
+      scene_unavailable: true,
+      low_confidence: false,
+      answers: null,
+      error_code: directed.error_code,
+      message: directed.message
+    };
+  }
+
+  return {
+    scene: directed.scene,
+    changed: directed.changed,
+    scene_unavailable: false,
+    low_confidence: directed.low_confidence,
+    // 신뢰도 미달로 유지된 턴을 서술과 함께 남기면 "빠진 장소" 목록이 된다 —
+    // 사람이 그걸 읽고 world.stage에 장소를 추가한다. 로그는 server.js가 남긴다.
+    answers: directed.answers || null
+  };
+}
+
 async function runTurn({
   world,
   cards = [],
@@ -91,7 +150,9 @@ async function runTurn({
   onNarration,
   signal,
   judgeClient,
-  judgeModel
+  judgeModel,
+  directorClient,
+  confidenceThreshold
 } = {}) {
   const input = String(userInput || "").trim();
   if (!input) return errorResult("INVALID_ARGUMENT", "행동을 입력하세요.", false);
@@ -132,10 +193,6 @@ async function runTurn({
   }
 
   const parsed = narration.parseNarration(generated.text);
-  // 장면이 안 바뀌었으면 null이다(narration.parseScene 참고) — 이 값 자체가 "이미지를
-  // 다시 그려야 하는가"의 신호다. 이 파일은 신호를 집어 나를 뿐, 프롬프트를 만들거나
-  // 해시를 계산하지 않는다(그건 src/server/scene.js의 몫이고 server.js가 부른다).
-  const scene = narration.parseScene(generated.text);
 
   // usage가 없다고 0으로 집계하면 계량기가 조용히 거짓말을 한다. 어림값이라고 표시하고 센다.
   const estimated = !generated.usage;
@@ -186,14 +243,26 @@ async function runTurn({
     judgeModel
   });
 
-  // scene이 null이면(장면이 안 바뀌었으면) 세션이 이미 갖고 있던 current_scene을
-  // 그대로 들고 간다 — 매 턴 <장면> 블록이 나오는 게 아니므로, null을 그대로
-  // 덮어쓰면 다음 턴의 [현재 상태]가 "아직 정해지지 않음"으로 되돌아가 rule 2가
-  // 다시 매 턴 장면 블록을 강제하게 된다.
+  // 장면 판정도 서술이 다 흐른 다음이다(판정과 같은 자리). 매 턴 조건 없이
+  // 묻는다 — 예전 고장("블록을 안 써서 그림이 그대로")은 묻는 것 자체가
+  // 조건부였기 때문에 생겼다.
+  const priorScene = session?.current_scene || null;
+  const direction = await runDirection({
+    world,
+    previousScene: priorScene,
+    narration: parsed.narration,
+    directorClient,
+    confidenceThreshold,
+    signal
+  });
+
+  // direction.scene은 항상 "이번 턴에 화면이 들고 갈 장면"이다 — 바뀌었으면 새
+  // 장면, 아니면 직전 장면 그대로. 판정이 실패했거나 신뢰도가 모자랐으면
+  // director가 이미 직전 장면을 그대로 돌려줬으므로 여기서 다시 고를 것이 없다.
   const nextSession = {
     ...sessionApi.appendTurn(session, turn),
     sim: simState,
-    current_scene: scene || session?.current_scene || null
+    current_scene: direction.scene || null
   };
 
   return {
@@ -222,9 +291,21 @@ async function runTurn({
     // "모른다"고 알린다 — budget.js의 budget_unknown과 같은 원칙). judgeClient를
     // 아예 안 줬을 때는 false다 — 시도조차 안 한 것과 실패한 것은 다르다.
     judge_unavailable,
-    // 장면이 안 바뀐 턴에는 null이다. server.js는 이 값이 있을 때만(그리고 서술
-    // 스트림이 다 끝난 다음에) src/server/scene.js를 불러 이미지를 만든다.
-    scene
+    // 이번 턴의 장면. 안 바뀐 턴에도 (직전 장면이 있으면) 값이 있다 — 화면 라벨과
+    // 다음 턴의 [현재 상태]가 이 값을 쓴다. **그림을 그릴지는 scene이 아니라
+    // scene_changed가 정한다.**
+    scene: direction.scene,
+    // server.js는 이 값이 true일 때만(그리고 서술 스트림이 다 끝난 다음에)
+    // src/server/scene.js를 불러 이미지를 만든다.
+    scene_changed: direction.changed,
+    // 장면 판정 호출 자체가 실패했을 때만 true다 — judge_unavailable과 같은 원칙
+    // (모르는 값을 "없음"으로 적지 않는다). directorClient를 아예 안 줬을 때는
+    // false다: 시도조차 안 한 것과 실패한 것은 다르다.
+    scene_unavailable: direction.scene_unavailable,
+    // 세 답 중 하나라도 임계 미만이라 장면을 유지했다. 이 턴들을 서술과 함께
+    // 모으면 world.stage에 빠진 장소 목록이 된다(server.js가 로그로 남긴다).
+    scene_low_confidence: direction.low_confidence,
+    scene_answers: direction.answers
   };
 }
 

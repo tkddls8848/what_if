@@ -60,6 +60,38 @@ function normalizeProtagonist(raw) {
   };
 }
 
+/**
+ * `world.stage` — 이 세계관에서 **그릴 수 있는 배경의 닫힌 집합**.
+ *
+ * 이름이 카드의 `relationship_stages`와 겹쳐 보이지만 아무 관계가 없다. 저쪽은
+ * 관계 단계(0_stranger…4_love)이고, 이쪽은 연극의 무대(stage) — 장소·시간대·날씨의
+ * 정의역이다.
+ *
+ * 왜 닫힌 집합인가: 배경 이미지의 캐시 키가 매 턴 생성되는 자유 문자열이면
+ * "교실"과 "3학년 2반 교실"이 다른 그림이 된다(src/server/scene.js 머리주석의
+ * "같은 그림이 비슷한 그림보다 강한 일관성을 준다"가 구조적으로 깨지는 자리).
+ * 미술감독(src/server/director.js)이 이 목록 **안에서만** 고르게 하면 그 사고가
+ * 일어날 수 없다.
+ *
+ * `visual`은 **사람이 미리 쓰는 영어 문장**이다. 생성물이 아니라 저작물이므로
+ * 고치면 계속 반영되고, 한글이 섞일 일이 없다(resolveScene의 한글 게이트는
+ * 그래도 불변식 방어로 남는다). world.visual_style과 같은 이유로 영어다 —
+ * 이미지 모델이 영어 캡션으로 학습되어 있다.
+ *
+ * id가 없는 장소 항목은 버린다 — id가 캐시 키의 재료이자 Choice의 선택지 키라
+ * 없으면 아무 일도 할 수 없다.
+ */
+function normalizeStageSet(raw) {
+  const s = raw && typeof raw === "object" ? raw : {};
+  const locations = (Array.isArray(s.locations) ? s.locations : [])
+    .map((item) => {
+      const loc = item && typeof item === "object" ? item : {};
+      return { id: str(loc.id), ko: str(loc.ko), visual: str(loc.visual) };
+    })
+    .filter((loc) => loc.id);
+  return { locations, times: list(s.times), weathers: list(s.weathers) };
+}
+
 export function normalizeWorld(raw = {}) {
   return {
     world_id: str(raw.world_id) || "world",
@@ -79,6 +111,9 @@ export function normalizeWorld(raw = {}) {
     opening: str(raw.opening),
     rules: list(raw.rules),
     forbidden: list(raw.forbidden),
+    // 배경의 닫힌 집합(normalizeStageSet 참고). 없으면 빈 집합이고, 그 세계관은
+    // 배경 그림을 못 그린다 — director.js가 INVALID_ARGUMENT로 그 사실을 드러낸다.
+    stage: normalizeStageSet(raw.stage),
     // created_at은 여기서 생성하지 않는다. loadWorldFile은 요청마다 파일을 다시 읽고
     // normalizeWorld를 거치는데, 여기서 new Date()를 부르면 저장된 세계관 파일에 이미
     // 있는 값도 매번 지금 시각으로 덮어써 정규화가 멱등하지 않게 된다.
