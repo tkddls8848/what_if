@@ -1,0 +1,278 @@
+{
+  "name": "scene director golden set",
+  "created": "2026-09-20",
+  "note": "각 항목은 { 직전 장면, 서술, 정답 location_id/time/weather, 정답 changed }다. 서술은 이 저장소의 두 세계관 톤에 맞춰 사람이 쓴 것이고, 정답은 서술만 읽고 사람이 정했다. changed는 직전 장면과 정답 세 축을 비교하면 나오는 값이라 따로 적지 않고 계산한다 — 두 곳에 적으면 어긋난다.",
+  "cases": [
+    {
+      "id": "demo-01",
+      "world_id": "demo",
+      "previous_scene": null,
+      "narration": "형광등이 한 번 깜박이고 다시 켜진다. 3학년 2반, 책상 두 줄만 불빛 아래 있다. 창밖으로 빗줄기가 비스듬히 떨어진다. 해린이 볼펜을 딸깍거리며 창밖을 본다. 시계는 아홉 시 사십 분.",
+      "location_id": "classroom_3_2",
+      "time": "저녁",
+      "weather": "비"
+    },
+    {
+      "id": "demo-02",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "밤", "weather": "비" },
+      "narration": "해린은 문제집을 덮지 않았다. 볼펜 소리가 멎었다가 다시 났다. 빗소리가 창을 두드린다. 그는 같은 줄을 세 번째 읽고 있었다.",
+      "location_id": "classroom_3_2",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-03",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "밤", "weather": "비" },
+      "narration": "그는 가방을 메고 교실 문을 밀었다. 복도의 불은 꺼져 있었다. 사물함 줄이 어둠 속으로 이어졌다. 등 뒤에서 교실 불빛이 길게 늘어졌다.",
+      "location_id": "hallway",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-04",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "hallway", "place": "복도", "time": "밤", "weather": "비" },
+      "narration": "계단을 내려가는 발소리가 두 사람 몫으로 울렸다. 층계참의 형광등 하나만 켜져 있었다. 창밖은 까맣고, 유리에 빗줄기가 흘렀다.",
+      "location_id": "stairwell",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-05",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "stairwell", "place": "계단참", "time": "밤", "weather": "비" },
+      "narration": "정문은 아직 잠기지 않았다. 경비실 창에 불이 켜져 있었다. 젖은 아스팔트에 가로등이 길게 비쳤다. 해린이 가방에서 우산 두 개를 꺼냈다.",
+      "location_id": "front_gate",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-06",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "front_gate", "place": "정문 앞", "time": "밤", "weather": "비" },
+      "narration": "빗줄기가 가늘어지더니 멎었다. 우산을 접는 소리가 났다. 구름은 그대로였고 하늘은 여전히 낮았다. 해린이 시계를 봤다. 열한 시를 지나 있었다.",
+      "location_id": "front_gate",
+      "time": "밤",
+      "weather": "흐림"
+    },
+    {
+      "id": "demo-07",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "밤", "weather": "비" },
+      "narration": "마지막 버스는 이미 끊겼다. 교실 시계의 초침 소리가 유난히 크게 들렸다. 자정이 지나 있었다. 해린은 아직 자리를 뜨지 않았다.",
+      "location_id": "classroom_3_2",
+      "time": "자정",
+      "weather": "비"
+    },
+    {
+      "id": "demo-08",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "hallway", "place": "복도", "time": "밤", "weather": "비" },
+      "narration": "그는 복도 끝에서 멈췄다. 되돌아갈까 잠깐 생각했다. 교실 쪽에서 불빛이 새어 나왔다. 그는 그대로 서 있었다.",
+      "location_id": "hallway",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-09",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "front_gate", "place": "정문 앞", "time": "밤", "weather": "흐림" },
+      "narration": "둘은 다시 건물 안으로 들어왔다. 복도는 아까보다 더 어두웠다. 어딘가에서 문 닫히는 소리가 났다.",
+      "location_id": "hallway",
+      "time": "밤",
+      "weather": "흐림"
+    },
+    {
+      "id": "demo-10",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "저녁", "weather": "흐림" },
+      "narration": "창밖이 어두워졌다. 언제부터인지 비가 다시 내리고 있었다. 유리에 물줄기가 흘렀다. 해린이 책장을 넘겼다.",
+      "location_id": "classroom_3_2",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-11",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "밤", "weather": "비" },
+      "narration": "\"먼저 가.\" 해린이 말했다. 그는 대답하지 않았다. 책상 위에 편의점 빵이 놓여 있었다. 언제 놓였는지 몰랐다.",
+      "location_id": "classroom_3_2",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-12",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "stairwell", "place": "계단참", "time": "밤", "weather": "비" },
+      "narration": "계단을 다 내려오자 정문이 보였다. 철문은 닫혀 있었다. 경비 아저씨의 손전등 불빛이 마당을 쓸고 지나갔다. 해린이 조용히 하라는 손짓을 했다.",
+      "location_id": "front_gate",
+      "time": "밤",
+      "weather": "비"
+    },
+    {
+      "id": "demo-13",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "front_gate", "place": "정문 앞", "time": "밤", "weather": "비" },
+      "narration": "자정을 알리는 소리가 멀리서 들렸다. 가로등 불빛 아래 빗방울이 촘촘했다. 둘 다 움직이지 않았다.",
+      "location_id": "front_gate",
+      "time": "자정",
+      "weather": "비"
+    },
+    {
+      "id": "demo-14",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "hallway", "place": "복도", "time": "자정", "weather": "비" },
+      "narration": "그는 교실로 돌아왔다. 형광등은 그대로 켜져 있었다. 해린의 가방이 옆자리에 그대로 있었다.",
+      "location_id": "classroom_3_2",
+      "time": "자정",
+      "weather": "비"
+    },
+    {
+      "id": "demo-15",
+      "world_id": "demo",
+      "previous_scene": { "location_id": "classroom_3_2", "place": "3학년 2반 교실", "time": "자정", "weather": "비" },
+      "narration": "형광등이 꺼졌다. 복도 쪽에서 스위치 내리는 소리가 났다. 그는 어둠 속에서 창밖을 봤다. 빗소리는 여전했다.",
+      "location_id": "classroom_3_2",
+      "time": "자정",
+      "weather": "비"
+    },
+
+    {
+      "id": "lighthouse-01",
+      "world_id": "lighthouse",
+      "previous_scene": null,
+      "narration": "바람이 창을 두드린다. 난로에 장작이 내려앉으며 불티가 튀었다. 표관수가 일지를 펼쳐 놓고 기압계를 들여다본다. 밖은 아직 어둡다. 새벽 다섯 시가 조금 넘었다.",
+      "location_id": "keepers_room",
+      "time": "아침",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-02",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "keepers_room", "place": "등대지기 방", "time": "아침", "weather": "폭풍" },
+      "narration": "그는 나선계단을 올랐다. 철제 계단이 발밑에서 울렸다. 벽에 걸린 등이 한 칸씩 지나갔다. 위로 갈수록 바람 소리가 커졌다.",
+      "location_id": "spiral_stair",
+      "time": "아침",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-03",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "spiral_stair", "place": "등탑 나선계단", "time": "아침", "weather": "폭풍" },
+      "narration": "렌즈가 천천히 돌았다. 유리에 소금기가 하얗게 앉아 있었다. 그는 걸레로 한 면씩 닦아 냈다. 아래로 회색 바다가 끝없이 뒤척였다.",
+      "location_id": "lamp_room",
+      "time": "아침",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-04",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "lamp_room", "place": "등탑 등명기실", "time": "아침", "weather": "폭풍" },
+      "narration": "바람이 잦아들었다. 대신 눈이 내리기 시작했다. 유리 너머로 흰 알갱이가 비스듬히 지나갔다. 해가 중천에 걸렸지만 빛은 희미했다.",
+      "location_id": "lamp_room",
+      "time": "낮",
+      "weather": "눈"
+    },
+    {
+      "id": "lighthouse-05",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "lamp_room", "place": "등탑 등명기실", "time": "낮", "weather": "눈" },
+      "narration": "그는 부두로 내려갔다. 널판에 살얼음이 끼어 있었다. 계류 기둥에 밧줄이 감긴 채였다. 배가 서야 할 자리는 비어 있었다.",
+      "location_id": "pier",
+      "time": "낮",
+      "weather": "눈"
+    },
+    {
+      "id": "lighthouse-06",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "pier", "place": "부두", "time": "낮", "weather": "눈" },
+      "narration": "그는 바위를 따라 걸었다. 검은 돌이 젖어 번들거렸다. 묵은 눈이 군데군데 남아 있었다. 마른 풀이 바람에 한쪽으로 누웠다.",
+      "location_id": "island_shore",
+      "time": "낮",
+      "weather": "눈"
+    },
+    {
+      "id": "lighthouse-07",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "island_shore", "place": "섬 기슭", "time": "낮", "weather": "눈" },
+      "narration": "눈이 그쳤다. 구름은 여전히 낮게 깔려 있었다. 파도가 바위에 부딪혀 흰 물보라를 올렸다. 그는 한참 서 있었다.",
+      "location_id": "island_shore",
+      "time": "낮",
+      "weather": "흐림"
+    },
+    {
+      "id": "lighthouse-08",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "island_shore", "place": "섬 기슭", "time": "낮", "weather": "흐림" },
+      "narration": "해가 기울었다. 그는 방으로 돌아와 난로에 장작을 넣었다. 젖은 외투를 벽에 걸었다. 등잔에 불을 붙였다.",
+      "location_id": "keepers_room",
+      "time": "저녁",
+      "weather": "흐림"
+    },
+    {
+      "id": "lighthouse-09",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "keepers_room", "place": "등대지기 방", "time": "저녁", "weather": "흐림" },
+      "narration": "일지에 오늘 날짜를 적었다. 잉크가 번졌다. 기압계 바늘이 다시 내려가 있었다. 창밖에서 바람이 세지기 시작했다.",
+      "location_id": "keepers_room",
+      "time": "저녁",
+      "weather": "흐림"
+    },
+    {
+      "id": "lighthouse-10",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "keepers_room", "place": "등대지기 방", "time": "저녁", "weather": "흐림" },
+      "narration": "밤이 되자 폭풍이 돌아왔다. 그는 계단을 올라 등탑 꼭대기에 섰다. 렌즈 너머로 빛줄기가 어둠을 갈랐다. 창이 통째로 흔들렸다.",
+      "location_id": "lamp_room",
+      "time": "밤",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-11",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "lamp_room", "place": "등탑 등명기실", "time": "밤", "weather": "폭풍" },
+      "narration": "계단 아래에서 젖은 발소리가 멈췄다. 그는 난간을 붙잡고 아래를 내려다봤다. 등 하나가 벽에서 흔들리고 있었다. 아무도 올라오지 않았다.",
+      "location_id": "lamp_room",
+      "time": "밤",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-12",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "lamp_room", "place": "등탑 등명기실", "time": "밤", "weather": "폭풍" },
+      "narration": "그는 계단을 내려가기 시작했다. 한 칸씩, 소리를 죽이며. 벽의 등이 그림자를 길게 늘였다. 밧줄 난간이 손에 거칠었다.",
+      "location_id": "spiral_stair",
+      "time": "밤",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-13",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "spiral_stair", "place": "등탑 나선계단", "time": "밤", "weather": "폭풍" },
+      "narration": "방문은 열려 있었다. 난로의 불이 사그라들어 있었다. 탁자 위 등잔이 흔들렸다. 침상은 비어 있었다.",
+      "location_id": "keepers_room",
+      "time": "밤",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-14",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "keepers_room", "place": "등대지기 방", "time": "밤", "weather": "폭풍" },
+      "narration": "그는 문을 밀고 밖으로 나갔다. 바람이 정면으로 부딪쳤다. 부두 쪽 널판이 삐걱거리는 소리가 들렸다. 밧줄 하나가 풀려 흔들리고 있었다.",
+      "location_id": "pier",
+      "time": "밤",
+      "weather": "폭풍"
+    },
+    {
+      "id": "lighthouse-15",
+      "world_id": "lighthouse",
+      "previous_scene": { "location_id": "pier", "place": "부두", "time": "밤", "weather": "폭풍" },
+      "narration": "밧줄을 다시 감아 묶었다. 손끝이 얼어 감각이 없었다. 폭풍은 잦아들 기미가 없었다. 등탑의 빛이 머리 위로 한 바퀴 지나갔다.",
+      "location_id": "pier",
+      "time": "밤",
+      "weather": "폭풍"
+    }
+  ]
+}

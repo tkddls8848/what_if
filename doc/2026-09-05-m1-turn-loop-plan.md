@@ -4,11 +4,17 @@
 
 **Goal:** 하드코딩한 캐릭터 카드로 Cloudflare Workers AI 70B와 스트리밍 대화가 왕복하는 턴 루프를 만든다. `/play`에서 장면 서술이 흐르고 선택지 3개가 나오며, 소모한 Neurons가 집계된다.
 
+> **완료된 계획서다(2026-09-05).** 구현이 끝났고, 이후 배선이 바뀐 부분이 있다 —
+> 지금 도는 코드의 권위는 [`doc/README.md`](./README.md)다. 특히 이 계획서가 쓰인 뒤
+> 한 턴의 호출이 셋으로 늘었고(서술 · 판정 · 장면 판정), `core/narration.js`에서
+> 장면 파싱이 **삭제**됐다([장면 판정 분리 설계](./2026-09-20-scene-director-jev-design.md)).
+> 이 문서는 당시 태스크 분해와 판단의 기록으로 그대로 둔다.
+
 **Architecture:** 턴 하나는 ①서술 생성(Cloudflare, 스트리밍, 자유 텍스트)과 ②상태 추출(로컬 Ollama, 구조화)로 나뉜다. **M1은 ①만 만든다.** 프롬프트 조립은 `src/core/`(ESM, 순수 함수)가, 모델 호출은 `src/llm/`(CommonJS, fetch 주입)이, 둘을 잇는 오케스트레이션은 `src/server/turn.js`가 한다. 서술과 선택지는 한 호출에서 받고 `<선택지>` 마커로 가른다.
 
 **Tech Stack:** Node v23.3, Express 4, `node --test`, 의존성 추가 없음. Cloudflare Workers AI REST (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`).
 
-**Spec:** [`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`](2026-09-05-interactive-fiction-pivot-design.md)
+**Spec:** [`doc/2026-09-05-interactive-fiction-pivot-design.md`](2026-09-05-interactive-fiction-pivot-design.md)
 
 ## Global Constraints
 
@@ -58,7 +64,7 @@
 - Create: `src/llm/package.json`
 - Create: `src/llm/budget.js`
 - Test: `tests/budget.test.mjs`
-- Modify: `doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md` (9절 `src/llm/`을 CommonJS로 정정)
+- Modify: `doc/2026-09-05-interactive-fiction-pivot-design.md` (9절 `src/llm/`을 CommonJS로 정정)
 
 **Interfaces:**
 - Consumes: 없음
@@ -263,7 +269,7 @@ Expected: PASS, 8 tests
 
 - [ ] **Step 6: 스펙 9절의 모듈 종류 표기를 고친다**
 
-`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`의 9절에서 이 줄을
+`doc/2026-09-05-interactive-fiction-pivot-design.md`의 9절에서 이 줄을
 
 ```text
 src/llm/           [신규] 모델 어댑터 (ESM)
@@ -278,7 +284,7 @@ src/llm/           [신규] 모델 어댑터 (CommonJS — 소비자가 전부 C
 - [ ] **Step 7: 커밋**
 
 ```bash
-git add src/llm/package.json src/llm/budget.js tests/budget.test.mjs doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md
+git add src/llm/package.json src/llm/budget.js tests/budget.test.mjs doc/2026-09-05-interactive-fiction-pivot-design.md
 git commit -m "feat(llm): Neuron 계량기와 Workers AI 단가표"
 ```
 
@@ -2621,7 +2627,7 @@ git commit -m "feat(server): /api/turn SSE 엔드포인트와 플레이 화면"
   - 선택지가 서로 다른 방향을 가리키는가, 아니면 같은 행동의 말만 바꾼 것인가
   - 모델이 사용자를 대신해 사용자의 행동을 서술하는 일이 몇 번 있는가
   - 실제 소모 Neurons가 스펙 3-3절의 턴당 200과 얼마나 다른가
-- [ ] 위 결과를 `doc_nextsession/`에 M1 실측 메모로 남기고, 스펙 3-3절의 토큰 추정표와 12절 5번을 실측으로 교체한다
+- [ ] 위 결과를 `doc/`에 M1 실측 메모로 남기고, 스펙 3-3절의 토큰 추정표와 12절 5번을 실측으로 교체한다
 
 이 결과가 나쁘면 M2 이후는 헛수고다. **재미없으면 멈추고 프롬프트와 모델을 먼저 다시 본다.**
 

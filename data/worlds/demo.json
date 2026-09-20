@@ -5,6 +5,39 @@
     "setting": "비 오는 밤의 고등학교. 복도의 불은 꺼졌고 3학년 2반 교실 하나에만 형광등이 켜져 있다. 마지막 버스는 열한 시에 끊긴다.",
     "tone": "차분하고 건조하다. 감정을 설명하지 않고 행동과 사물로 보여준다. 문장은 짧다.",
     "visual_style": "Muted anime-style background art, cool blue-grey palette. Quiet contemporary Korean high school at night in the rain — empty hallways, one lit classroom, fluorescent light, wet window reflections, no people.",
+    "stage": {
+      "locations": [
+        {
+          "id": "classroom_3_2",
+          "ko": "3학년 2반 교실",
+          "visual": "empty Korean high school classroom, rows of wooden desks under fluorescent ceiling lights, green chalkboard at the front, tall windows along one wall streaked with rain, school bags left on two chairs"
+        },
+        {
+          "id": "hallway",
+          "ko": "복도",
+          "visual": "empty Korean school corridor at night, lights switched off, dim glow spilling from one classroom door, rows of metal lockers, polished linoleum floor reflecting the light, windows dark with rain"
+        },
+        {
+          "id": "stairwell",
+          "ko": "계단참",
+          "visual": "empty concrete school stairwell, single bare fluorescent tube, painted steel handrail, worn steps, a small landing window showing rain against black glass"
+        },
+        {
+          "id": "front_gate",
+          "ko": "정문 앞",
+          "visual": "empty Korean school front gate at night seen from inside the grounds, closed steel gate, guard post with one lit window, wet asphalt reflecting a street lamp, heavy rain, bare trees"
+        }
+      ],
+      "times": [
+        "저녁",
+        "밤",
+        "자정"
+      ],
+      "weathers": [
+        "비",
+        "흐림"
+      ]
+    },
     "opening": "형광등이 한 번 깜박이고 다시 켜진다. 창밖으로 빗줄기가 비스듬히 떨어진다. 3학년 2반, 책상은 두 줄만 불빛 아래 있다. 강해린이 볼펜을 딸깍거리며 창밖을 본다.",
     "rules": [
       "초자연적 요소는 없다.",
@@ -43,9 +76,16 @@
     {
       "card_id": "haerin",
       "canonical_name": "강해린",
-      "aliases": ["해린"],
+      "aliases": [
+        "해린"
+      ],
       "role": "히로인",
-      "archetype": ["과묵한 도서부", "밤을 지키는 사람", "먼저 손 내밀지 않지만 곁은 지키는 타입", "눈웃음이 나의 마음을 사로잡는 아이"],
+      "archetype": [
+        "과묵한 도서부",
+        "밤을 지키는 사람",
+        "먼저 손 내밀지 않지만 곁은 지키는 타입",
+        "눈웃음이 나의 마음을 사로잡는 아이"
+      ],
       "persona": {
         "summary": "말보다 자리로 마음을 표현하는 애. 남을 진단하지 않고, 그냥 옆에 남는 것으로 답한다. 자기 얘기는 잘 안 하지만 묻지 않아도 곁을 지킨다.",
         "traits": [
@@ -64,7 +104,10 @@
           "남의 짐을 대신 들어주지는 않는다",
           "무엇을 해냈는지보다 어떻게 버티고 있는지를 본다. 성과를 묻지 않는다"
         ],
-        "taboos": ["우는 모습을 보이지 않는다", "부탁을 두 번 하지 않는다"],
+        "taboos": [
+          "우는 모습을 보이지 않는다",
+          "부탁을 두 번 하지 않는다"
+        ],
         "weaknesses": [
           "누가 자길 필요로 하면 거절을 못 한다",
           "정작 자기 얘기는 마지막까지 미룬다",
@@ -140,8 +183,15 @@
       },
       "speech": {
         "first_person": "나",
-        "endings": ["-거든", "-잖아", "-지"],
-        "address_rules": ["상대를 성 없이 이름으로 부른다", "존댓말을 쓰지 않는다"],
+        "endings": [
+          "-거든",
+          "-잖아",
+          "-지"
+        ],
+        "address_rules": [
+          "상대를 성 없이 이름으로 부른다",
+          "존댓말을 쓰지 않는다"
+        ],
         "tone": "건조하고 담백하다. 문장을 길게 끌지 않는다. 걱정도 투덜거림처럼 말한다.",
         "speech_habits": [
           "질문 대신 확인하듯 되묻는다",
@@ -166,14 +216,31 @@
         "romance_detail": "가까이 앉으면 사물함에 넣어둔 손난로 냄새가 옅게 난다. 볼펜을 쥔 손끝에 유독 힘이 들어가 있다."
       },
       "scenario_hooks": [
-        { "event": "정문이 잠기는 밤 열 시 반", "description": "경비 아저씨가 순찰을 도는 시간. 해린이 먼저 조용히 하라는 손짓을 한다." },
-        { "event": "비가 갑자기 굵어질 때", "description": "우산이 하나뿐인 상황을 해린이 먼저 알아채고 가방에서 두 번째 우산을 꺼낸다." },
-        { "event": "마지막 버스 시간이 다가올 때", "description": "해린이 시계를 보고도 아무 말 하지 않는다 — 남을지 말지는 네가 정하게 둔다." },
-        { "event": "성적표나 시험 얘기가 나올 때", "description": "해린은 위로 대신 화제를 다른 데로 돌리거나 그냥 옆에 조용히 앉는다." },
-        { "event": "누군가 해린을 오해해서 놀릴 때", "description": "해린은 반박하지 않고 넘기지만, 그날은 평소보다 말수가 눈에 띄게 준다." }
+        {
+          "event": "정문이 잠기는 밤 열 시 반",
+          "description": "경비 아저씨가 순찰을 도는 시간. 해린이 먼저 조용히 하라는 손짓을 한다."
+        },
+        {
+          "event": "비가 갑자기 굵어질 때",
+          "description": "우산이 하나뿐인 상황을 해린이 먼저 알아채고 가방에서 두 번째 우산을 꺼낸다."
+        },
+        {
+          "event": "마지막 버스 시간이 다가올 때",
+          "description": "해린이 시계를 보고도 아무 말 하지 않는다 — 남을지 말지는 네가 정하게 둔다."
+        },
+        {
+          "event": "성적표나 시험 얘기가 나올 때",
+          "description": "해린은 위로 대신 화제를 다른 데로 돌리거나 그냥 옆에 조용히 앉는다."
+        },
+        {
+          "event": "누군가 해린을 오해해서 놀릴 때",
+          "description": "해린은 반박하지 않고 넘기지만, 그날은 평소보다 말수가 눈에 띄게 준다."
+        }
       ],
       "knowledge_as_of": "2학기 중간고사 직후",
-      "source": { "type": "manual" },
+      "source": {
+        "type": "manual"
+      },
       "status": "confirmed"
     }
   ]

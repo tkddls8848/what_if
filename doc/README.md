@@ -1,6 +1,6 @@
 # 기술 설계
 
-Updated: 2026-09-05
+Updated: 2026-09-20
 
 설치·실행·API 요약은 [루트 README](../README.md)에 있다. 이 문서는 **왜 그렇게
 만들었는지**와 데이터 계약을 다룬다.
@@ -13,19 +13,34 @@ Updated: 2026-09-05
 | 경로 | 앱 | 상태 |
 | --- | --- | --- |
 | `/` | 랜딩 페이지 | 새로 추가 |
-| `/play` | 인터랙티브 소설 (새 앱) | M1 완료 |
+| `/play` | 인터랙티브 소설 (새 앱) | M1 완료 + 장면 판정 분리(2026-09-20) |
 | `/analyze`, `/check` | 소설 분석기 (옛 앱) | 동작한다. M3에서 걷어낸다 |
 | `/api/turn`, `/api/cf/health` | 인터랙티브 소설 | M1 완료 |
 | `/api/analyze/ollama`, `/api/import/wikisource`, `/api/whatif` | 분석기 | 동작한다 |
 
 피보팅의 방향과 마일스톤은
-[`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`](../doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md)에
+[`doc/2026-09-05-interactive-fiction-pivot-design.md`](./2026-09-05-interactive-fiction-pivot-design.md)에
 있고, 그 문서가 이 문서의 상위 권위다. M1의 태스크별 구현 계획은
-[`doc_nextsession/2026-09-05-m1-turn-loop-plan.md`](../doc_nextsession/2026-09-05-m1-turn-loop-plan.md)에 있다.
+[`doc/2026-09-05-m1-turn-loop-plan.md`](./2026-09-05-m1-turn-loop-plan.md)에 있다.
+
+**배경 이미지 경로는 2026-09-20에 다시 설계됐다.** 장면 판정을 서술자에게서 떼어내
+별도 호출로 옮긴 것으로, 설계는
+[`doc/2026-09-20-scene-director-jev-design.md`](./2026-09-20-scene-director-jev-design.md),
+실물 확인과 측정 결과는
+[`doc/2026-09-20-m0-jev-probe.md`](./2026-09-20-m0-jev-probe.md)에 있다. 이 문서의
+3·5·6·8절이 그 결과를 반영한다.
 
 **M1이 끝났고 M2~M5가 남았다.** M1은 순수 추가였다 — 옛 앱의 코드를 한 줄도 바꾸지
-않았고, 그래서 `npm test`는 기존 161건과 새 123건을 합쳐 284건 전부 통과한다. 피보팅
-계획은 M1에서 기존 테스트가 깨질 것을 전제했으나 그럴 일이 없었다.
+않았다. 피보팅 계획은 M1에서 기존 테스트가 깨질 것을 전제했으나 그럴 일이 없었다.
+지금 `npm test`는 554건 전부 통과한다.
+
+M1 이후 순수 추가가 아니었던 변경이 하나 있다 — **장면 판정 분리**(2026-09-20)는
+`core/narration.js`의 장면 파싱과 `core/memory.js`의 출력 규칙 2를 **삭제**했다.
+새 앱 안에서의 교체라 옛 앱은 여전히 안 건드렸다.
+
+> 주의: 이 M 번호와 [장면 판정 분리 설계](./2026-09-20-scene-director-jev-design.md)의
+> M 번호는 **다른 축**이다. 여기 M1~M5는 피보팅 전체의 마일스톤이고, 저쪽 M0~M3은
+> 배경 이미지 경로 하나의 마일스톤이다(M0·M1 완료, M2 측정 완료).
 
 이 문서의 1~8절은 새 앱을, 9절 이후는 아직 살아 있는 옛 앱을 다룬다.
 
@@ -51,9 +66,9 @@ src/analyzer.js   규칙 분석과 LLM 결과 병합 (ESM) — 옛 앱
    ↑                    ↑
 src/app/  브라우저      mcp/  읽기 전용 어댑터 (ESM) — 동결
                         ↑
-src/server/  Express·Ollama·외부 가져오기 (CommonJS)
+src/server/  Express·Ollama·판정자·미술감독·외부 가져오기 (CommonJS)
    ↑
-src/llm/      모델 어댑터 (CommonJS)
+src/llm/      모델 어댑터 — Workers AI, Gemini, 이미지, Jev (CommonJS)
 ```
 
 모듈 종류는 디렉터리별 `package.json`이 명시한다 — `src/`와 `mcp/`는 `"type": "module"`,
@@ -77,42 +92,72 @@ CommonJS이고, 매 요청 경로에서 `await import()`를 도는 것은 얻는
 
 ## 3. 턴 루프
 
-### 3-1. 두 종류의 호출
+### 3-1. 세 종류의 호출
 
-한 턴은 성격이 완전히 다른 두 호출로 이뤄진다.
+한 턴은 성격이 완전히 다른 세 호출로 이뤄진다.
 
-| | ① 서술 생성 | ② 상태 추출 |
-| --- | --- | --- |
-| 무엇 | 장면 산문 + 선택지 3개 | 그 턴의 사건·상태 변화 |
-| 출력 형식 | 자유 텍스트 | JSON Schema 강제 |
-| 스트리밍 | **필수** | 불필요 |
-| 담당 | Cloudflare Workers AI 70B | 로컬 Ollama 4B |
-| 상태 | M1에서 구현 | **M3** |
+| | ① 서술 생성 | ② 판정 | ③ 장면 판정 |
+| --- | --- | --- | --- |
+| 무엇 | 장면 산문 + 선택지 3개 | 이번 턴이 밟은 트리거 | 지금 어디·언제·어떤 날씨인가 |
+| 출력 형식 | 자유 텍스트 | JSON Schema 강제 | **닫힌 선택지**(타입이 정의역을 닫는다) |
+| 스트리밍 | **필수** | 불필요 | 불필요 |
+| 담당 | Cloudflare 70B → Gemini 폴백 | 로컬 Ollama 4B | TypeSafe Jev |
+| 온도 | 0.6 (창작) | 0.1 (추출) | 해당 없음 (문장을 만들지 않는다) |
+| 실패하면 | 턴이 실패한다 | `judge_unavailable` | `scene_unavailable` |
+| 모듈 | `llm/cloudflare.js` | `server/judge.js` | `server/director.js` |
 
-**이 분리는 선택이 아니라 강제다.** Workers AI의 JSON 모드는 스트리밍을 지원하지
+**①과 나머지의 분리는 강제다.** Workers AI의 JSON 모드는 스트리밍을 지원하지
 않는다. 한 호출로 산문과 구조화 데이터를 같이 받으려면 스트리밍을 포기해야 하고,
 그러면 매 턴 수 초의 백지 대기가 생긴다.
 
-M1이 만든 것은 ①뿐이다. ②는 M3에서 `src/server/turn.js` 끝에 비동기로 붙는다.
+**②와 ③이 ①에서 갈려 나온 이유는 같다 — 서술자에게 기준을 보여주면 이야기가 그
+기준에 맞춰진다.** 판정자에서 먼저 내린 결정이고(`judge.js` 머리주석: "채점 기준을
+알면 그 기준에 맞춰 장면을 쓰게 된다"), 장소 목록도 똑같다. 그릴 수 있는 곳이
+넷뿐인 걸 서술자가 알면 옥상으로 나가야 할 장면에서 복도에 머무른다 — 그림 사정이
+이야기를 끌고 가는 것이다. 나눠두면 서술자는 옥상으로 가고, 미술감독이 "확신
+없음 → 장면 유지"로 끝낸다.
+
+③이 ①에서 떨어져 나온 실질적 근거가 하나 더 있다. **온도가 하나뿐이다.** 산문은
+0.6이 필요하고 분류는 결정적이어야 하는데 한 호출은 한 온도다. 예전에 장면 판정이
+창작 온도에서 돌던 것이 "같은 교실을 매 턴 다르게 부르는" 고장의 근본 원인이었고,
+그건 프롬프트로 고쳐지지 않는다. 자세한 것은
+[장면 판정 분리 설계](./2026-09-20-scene-director-jev-design.md) 3-2절.
+
+②와 ③ 둘 다 **서술 스트림이 화면에 다 흐른 다음**에 돈다 — 독자가 글을 보는 속도를
+늦추면 안 된다(비용 계량이 스트림 이후에 도는 것과 같은 자리).
 
 ### 3-2. 흐름
 
 ```text
 사용자 입력 (자유 서술 또는 추천 선택지)
   │
-  ├─ core/memory.js  프롬프트 조립 = 고정 프리픽스 + 최근 3턴 + 현재 입력
+  ├─ core/memory.js  프롬프트 조립 = 고정 프리픽스 + [현재 상태] + 최근 3턴 + 현재 입력
   │
-  ├─ llm/cloudflare.js  narrate() — 스트리밍 ON, JSON OFF
+  ├─ llm/cloudflare.js  narrate() — 스트리밍 ON, JSON OFF   (폴백: llm/gemini.js)
   │     → core/narration.js 분할기가 마커 앞까지만 통과시킴
   │     → server.js가 SSE `narration` 이벤트로 흘림
   │
   ├─ core/narration.js  parseNarration() — 서술과 선택지 3개를 가름
   ├─ llm/budget.js      Neuron 집계
-  └─ core/session.js    appendTurn() — 새 세션 객체 반환
+  │
+  │  ── 여기서부터는 스트림이 끝난 뒤다 ──
+  │
+  ├─ server/judge.js     judgeTurn()   → core/sim.js applyJudgment() 로 상태 반영
+  ├─ server/director.js  directScene() → { scene, changed }
+  │     └ llm/jev.js  ask() — world.stage의 닫힌 목록으로 장소·시간·날씨를 묻는다
+  │
+  ├─ core/session.js     appendTurn() — 새 세션 객체 반환(current_scene 포함)
+  │
+  └─ (changed일 때만) server/scene.js resolveScene() → llm/image.js
+        → server.js가 SSE `scene` 이벤트로 URL 전달
 ```
 
 선택지 3개는 서술과 같은 호출에서 받는다. 나누면 턴당 Neurons가 1.5배가 되고, 선택지는
 방금 쓴 장면의 문맥이 가장 진할 때 나와야 좋다.
+
+**배경 이미지는 `changed`일 때만 그린다.** 장면 판정은 매 턴 조건 없이 돌지만, 답이
+직전 장면과 같으면 아무 일도 하지 않는다 — 캐시 히트조차 필요 없다. 이미지는 턴이
+이미 성공으로 끝난 뒤에 얹히는 것이라, 여기서 무엇이 실패해도 턴은 그대로 성공이다.
 
 ### 3-3. Workers AI 계약
 
@@ -123,8 +168,20 @@ POST https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/{MODEL}
 Authorization: Bearer {API_TOKEN}
 ```
 
+**예외가 하나 있다 — Jev는 이 경로가 아니다.** 서드파티 모델이라 모델 이름을 URL이
+아니라 **바디에** 싣는 통합 엔드포인트로 간다(`.../ai/run`, 모델 경로 없음). 위 경로에
+`typesafe/jev`를 넣으면 400 `7000 No route for that URI`가 온다. 과금도 다르다 —
+Workers AI 하루 무료 할당(10,000 Neurons)이 아니라 AI Gateway 통합 과금이라, 크레딧이
+없으면 402 `2021`이 온다. 실제로 주고받은 요청·응답은
+[M0 기록](./2026-09-20-m0-jev-probe.md) 2·3절에 있다.
+
+`CF_GATEWAY_ID`를 채우면 같은 바디가 AI Gateway 데이터 플레인으로 나간다
+(`https://gateway.ai.cloudflare.com/v1/{ACCOUNT_ID}/{GATEWAY_ID}/ai/run`). 로그·캐시·
+레이트리밋이 거기 붙는다. **두 경로는 URL과 헤더만 다르고 바디·응답 계약이 같다** —
+분기를 URL 조립 한 곳에 가둬서 병렬 실행 경로를 만들지 않는다.
+
 토큰은 `Workers AI - Read`와 `Workers AI - Edit` 두 권한이 필요하고, `CF_ACCOUNT_ID`·
-`CF_API_TOKEN` 환경변수로만 받는다. **어떤 HTTP 응답에도 나가지 않는다** — 401 응답
+`CF_API_TOKEN` 환경변수로만 받는다. Jev도 같은 자격증명을 쓴다 — 새 키는 없다. **어떤 HTTP 응답에도 나가지 않는다** — 401 응답
 본문에는 토큰 조각이 섞여 돌아올 수 있으므로 업스트림 메시지를 그대로 싣지 않는다.
 
 비밀은 `.env`에 둔다. 저장소 루트의 `.env.example`을 `.env`로 복사해서 채우고,
@@ -221,16 +278,153 @@ chat 형식도 깨진다.
 받은 전부"가 아니다. 대신 `finish()`가 남은 delta와 전체 텍스트를 함께 돌려주고,
 선택지 파싱은 전체 텍스트로 한다.
 
+### 5-1. 장면 판정은 여기 없다
+
+예전에는 서술자가 산문 안에 `<장면>` 블록(장소·시간·날씨·visual)을 직접 써 넣었고,
+그 블록의 **유무 자체가** "배경 이미지를 다시 그릴지"의 유일한 신호였다. 분할기도
+두 마커를 함께 감시하며 장면 블록만 골라 숨기는 상태 기계를 들고 있었다.
+
+그 배선을 걷어냈다. 창작 모델에게 산문을 쓰면서 동시에 분류와 조건 분기를 시키는
+것이라 네 가지로 고장났기 때문이다.
+
+| 고장 | 결과 |
+| --- | --- |
+| 블록을 안 쓴다 | 상황은 진행됐는데 그림이 그대로 |
+| 같은 장소를 다르게 부른다 | `"교실"`과 `"3학년 2반 교실"`이 다른 해시 → 같은 곳에 새 그림 |
+| `visual`에 한글이 섞인다 | 한글 게이트가 발동해 이미지를 아예 안 보낸다 |
+| 매 턴 발주서가 새로 생성된다 | 그림을 고쳐도 다음 턴에 날아간다 |
+
+지금 `core/narration.js`는 **선택지만** 다룬다. `parseScene`·`SCENE_MARKER`·
+`cutSceneBlock`은 삭제됐고, 분할기의 컷은 `<선택지>` 하나뿐이다. 출력 규칙
+(`core/memory.js`의 `OUTPUT_RULES`)에서도 장면 블록이 통째로 사라져 모델이 그걸 쓸
+이유 자체가 없다.
+
+**남긴 것이 하나 있다 — `renderSceneLine`.** 서술자는 여전히 `[현재 상태]` 블록에서
+지금 어디인지 **읽는다**. 없어진 것은 "블록을 쓰라"는 지시지 "여기가 어디다"라는
+사실이 아니다. 그걸 빼면 산문이 장소를 잃는다.
+
+환각으로 `<장면>` 태그가 새면 서술 본문에 그대로 남는다. 조용히 지우지 않는 것이
+의도다 — 규칙에서 사라진 마커가 다시 나온다면 프롬프트가 잘못됐다는 신호이고,
+걷어내 주면 그 신호가 안 보인다.
+
+### 5-2. 미술감독 (`src/server/director.js`)
+
+장면 판정은 서술이 끝난 뒤 도는 별도 호출이다. 세계관 파일의 `world.stage`로 질문
+셋을 만들어 한 번에 묻고, 답을 직전 장면과 비교해 `{ scene, changed }`를 낸다.
+
+```text
+answers = jev(state     = { 직전 장면, 이번 턴 서술 },
+              questions = { place:   Choice(world.stage.locations의 id),
+                            time:    Choice(world.stage.times),
+                            weather: Choice(world.stage.weathers) })
+```
+
+핵심 성질은 하나다 — **답의 정의역이 질문에 의해 닫힌다.** 목록 밖의 문자열이
+나오는 일이 구조적으로 불가능하므로, 위 표의 고장 2번(캐시 키 흔들림)은 프롬프트를
+잘 써서 줄어드는 것이 아니라 **사라진다**. `judge.js`의 `keepKnown()` 같은 사후
+필터가 필요 없다(방어는 그래도 이중화해 둔다).
+
+`visual`(이미지 프롬프트)은 **여기서 생성되지 않는다.** `world.stage.locations[].visual`에
+사람이 미리 써 둔 영어 문장을 id로 조회할 뿐이다. 생성물이 아니므로 고치면 계속
+반영되고, 한글이 섞일 일도 없다.
+
+판정 규칙:
+
+| 조건 | 동작 | 이유 |
+| --- | --- | --- |
+| 세 답의 신뢰도가 전부 임계 이상 && 직전과 다름 | 새로 그린다 | 정상 전환 |
+| 전부 임계 이상 && 직전과 같음 | 그대로 둔다 | 캐시 히트조차 필요 없다 |
+| 하나라도 임계 미만 | **장면을 유지한다** | 모르면 바꾸지 않는다 |
+
+"모르면 바꾸지 않는다"가 안전한 기본값인 이유: 잘못 바꾸면 **틀린 그림**이 걸리고,
+안 바꾸면 **조금 낡은 그림**이 걸린다. 후자가 덜 나쁘다.
+
+**"장면이 바뀌었는가"를 따로 묻지 않는다.** 세 답을 직전과 비교하면 나오는 값을 한
+번 더 묻는 것은 중복이고, 두 답이 어긋날 때 무엇을 믿을지가 또 문제가 된다.
+**"그 외" 탈출구도 두지 않는다.** authored되지 않은 장소로 서술이 넘어가면 장소의
+신뢰도가 낮게 나와 그 턴은 장면이 유지된다 — 탈출구를 두면 "미지의 장소 → 프롬프트
+생성"이라는 두 번째 경로가 생기고, 그게 정확히 이 설계가 없애려는 것이다.
+
+임계 기본값은 **0.5**다. 설계 초기값은 0.7이었고, 30턴 골든셋 측정으로 내렸다 —
+그 구간에서 precision과 장소 정확도가 임계와 무관하게 1.000이라 0.7을 지킬 근거가
+없었다([M0 기록](./2026-09-20-m0-jev-probe.md) 5-3절). 운영에서는
+`SCENE_CONFIDENCE`로 덮어쓴다.
+
+대가는 정직하게 적는다: **world 저작 부담이 늘어난다.** 장소를 빠뜨리면 그 장소는
+영영 안 그려진다. 운영 대응은 로그다 — 신뢰도 미달로 유지된 턴을 `server.js`가
+`[director]` 접두로 세 축의 선택·확신도와 서술 앞 80자와 함께 남기고, 사람이 그걸
+읽고 `world.stage`에 장소를 추가한다.
+
+### 5-3. 장면 실패는 턴을 죽이지 않는다
+
+Jev 호출이 실패하면(`PAYMENT_REQUIRED`/`CONNECTION_FAILED`/`TIMEOUT`/…) **장면을
+유지하고 턴은 성공시킨다.** 별도 폴백 모델을 두지 않는다 — 두면 병렬 실행 경로가
+생기고, 배경 그림 하나 때문에 유지할 만한 복잡도가 아니다.
+
+응답에는 `scene_unavailable: true`를 싣는다. `judge_unavailable`과 같은 원칙이다 —
+모르는 값을 "없음"으로 적지 않는다. **`directorClient`를 아예 안 준 호출부에서는
+`false`다**: 시도조차 안 한 것과 실패한 것은 다르다.
+
 ## 6. 데이터 계약
 
 ### 6-1. 신규 객체
 
 | 객체 | 필드 |
 | --- | --- |
-| `World` | `world_id`, `title`, `source_type`, `source_url`, `setting`, `tone`, `rules[]`, `forbidden[]`, `created_at` |
+| `World` | `world_id`, `title`, `source_type`, `source_url`, `setting`, `tone`, `visual_style`, `opening`, `rules[]`, `forbidden[]`, `protagonist{}`, `stage{}`, `created_at` |
 | `CharacterCard` | `card_id`, `world_id`, `canonical_name`, `aliases[]`, `persona{traits,values,taboos}`, `speech{first_person,endings,address_rules,examples}`, `appearance`, `relationships[]`, `knowledge_as_of`, `source{}`, `status` |
-| `Session` | `session_id`, `world_id`, `card_ids[]`, `pov`, `opening`, `turns[]`, `turn_count`, `summary_chain[]`, `created_at`, `settings{recent_turns, max_tokens}` |
+| `Session` | `session_id`, `world_id`, `card_ids[]`, `pov`, `opening`, `turns[]`, `turn_count`, `sim{}`, `current_scene`, `summary_chain[]`, `created_at`, `settings{recent_turns, max_tokens}` |
 | `Turn` | `turn_id`, `session_id`, `index`, `user_input`, `narration`, `choices[]`, `events[]`, `state_changes[]`, `audit{violations[]}`, `usage`, `model`, `extraction_failed` |
+
+#### `World.stage` — 그릴 수 있는 배경의 닫힌 집합
+
+```json
+{
+  "stage": {
+    "locations": [
+      { "id": "classroom_3_2",
+        "ko": "3학년 2반 교실",
+        "visual": "empty Korean high school classroom, rows of wooden desks, ..." }
+    ],
+    "times": ["저녁", "밤", "자정"],
+    "weathers": ["비", "흐림"]
+  }
+}
+```
+
+설계 결정 셋.
+
+1. **`visual`은 사람이 쓴다.** 생성물이 아니라 저작물이므로 고치면 계속 반영되고,
+   한글이 섞일 일이 없다(`resolveScene`의 한글 게이트는 그래도 불변식 방어로 남는다).
+   `world.visual_style`과 같은 이유로 영어다 — 이미지 모델이 영어 캡션으로 학습됐다.
+2. **`times`/`weathers`도 world별로 authored한다** — 전역 상수가 아니다. 정의역을
+   좁게 두면 `Choice` 정확도가 오르고, 세계관당 가능한 그림 수가
+   `|locations| × |times| × |weathers|`로 **유한해진다**(demo 4×3×2 = 24장,
+   lighthouse 5×4×3 = 60장). 그래서 미리 그려 둘 수도 있다(M3의 선택 사항).
+3. **`stage`로 묶는다** — `world` 최상위에 세 키를 흩뿌리지 않는다.
+
+이름이 카드의 `relationship_stages`와 겹쳐 보이지만 아무 관계가 없다. 저쪽은 관계
+단계이고, 이쪽은 연극의 무대다. `id`가 없는 장소 항목은 정규화에서 버린다 — id가
+캐시 키의 재료이자 `Choice`의 선택지 키라 없으면 아무 일도 할 수 없다.
+
+#### `Session.current_scene`
+
+`{ location_id, place, time, weather }` 또는 `null`(아직 장면이 정해지지 않음).
+
+- `location_id`는 배경 이미지 캐시 키의 재료이자 "장면이 바뀌었는가"의 비교 축이다.
+- `place`는 그 장소의 한국어 이름으로, 화면 라벨과 서술자의 `[현재 상태]` 줄에만 쓴다.
+- **`visual`은 담지 않는다.** 그 값은 세계관 파일에 authored되어 있고 매 턴
+  `location_id`로 다시 조회된다. 세션에 실어 브라우저를 오가게 하면 저작물이 사용자
+  입력으로 되돌아오는 경로가 생기는데, 그건 이미지 프롬프트에 그대로 들어가는 값이다.
+
+#### 턴 응답의 장면 필드
+
+| 필드 | 뜻 |
+| --- | --- |
+| `scene` | 이번 턴에 화면이 들고 갈 장면. **안 바뀐 턴에도 값이 있다** |
+| `scene_changed` | 그림을 그릴지는 `scene`이 아니라 **이 값이** 정한다 |
+| `scene_unavailable` | 판정 호출 자체가 실패했다(안 준 것과 다르다) |
+| `scene_low_confidence` | 신뢰도 미달로 장면을 유지했다 — "빠진 장소" 로그의 재료 |
 
 `Turn.events[]`, `state_changes[]`, `audit{violations[]}`, `Session.summary_chain[]`은
 M1에서 늘 비어 있다. M3의 추출 채널과 M4의 요약 체인이 채운다. 자리를 지금 비워 두는
@@ -297,12 +491,18 @@ M1은 태스크마다 독립 리뷰를 거쳤고, 리뷰가 잡은 결함 14건�
 
 | 경로 | 내용 |
 | --- | --- |
-| `/play` | 장면 서술 스트리밍, 자유 입력, 추천 선택지, 잘림 안내, 남은 Neurons |
+| `/play` | 장면 서술 스트리밍, 자유 입력, 추천 선택지, 배경 이미지, 잘림 안내, 남은 Neurons |
 
 읽는 화면이므로 계기판을 두지 않는다. 남은 Neurons만 구석에 작게 둔다. 세계관·카드
 관리(`/worlds`)와 카드 검수(`/check` 전환), 상태 그래프 뷰(`/session`)는 M2 이후다.
 
 `truncated`는 화면에 표시한다. 잘린 장면을 독자가 모르면 작가가 문장을 끊은 것으로 읽는다.
+
+배경 이미지는 SSE `scene` 이벤트로 **서술과 선택지가 다 나간 뒤에** 늦게 얹힌다.
+장면이 안 바뀐 턴에는 이 이벤트가 아예 오지 않고 직전 그림이 그대로 남는다 — 그게
+정상 동작이다. **인물은 그리지 않는다(실루엣 포함).** `src/server/scene.js`는 카드도
+주인공 이름도 persona도 **인자로 받지 않는다** — 애초에 넘기지 않으면 "인물이 샌다"는
+사고가 구조적으로 불가능하다.
 
 ---
 
@@ -632,26 +832,54 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
 
 # 테스트 지도
 
-`npm test`는 Ollama·네트워크·Cloudflare 없이 **284건**을 실행한다 — 옛 앱 161건과 새 앱
-123건이다. M1은 옛 앱 코드를 한 줄도 바꾸지 않았으므로 두 묶음이 함께 초록이다.
+`npm test`는 Ollama·네트워크·Cloudflare 없이 **554건**을 실행한다 — 새 앱 387건과
+나머지(옛 앱과 공용) 167건이다.
+
+**`npm test`는 실패해도 exit code 0을 낸다** — `node --test tests/*.test.mjs`의 동작이다.
+CI에 그대로 걸면 빨간 테스트를 못 잡는다. 지금은 사람이 `# fail` 줄을 읽는 것으로
+대신하고 있다.
 
 ## 새 앱
 
 | 파일 | 건수 | 무엇을 지키는가 |
 | --- | ---: | --- |
-| `budget.test.mjs` | 9 | Neuron 산수(표준 시나리오 199.7407), 미상 모델이 0이 아닌 `null`, UTC 일 단위 초기화 |
-| `cloudflare_client.test.mjs` | 23 | REST 계약, 오류 매핑 8종, **토큰 미유출**, abort 리스너 해제, `ABORTED`/`TIMEOUT` 구분, SSE 프레임 재조립·깨진 프레임 격리·`[DONE]` 이후 무시·`truncated` 두 경로 |
-| `card.test.mjs` | 12 | 카드 정규화, **id 결정성**, 파일의 `world_id`가 카드의 것을 이김, 빈 라벨 생략, 픽스처 로드 |
-| `session.test.mjs` | 24 | 1부터인 `turn_index`, **불변 갱신**(`settings`·`card_ids` 포함), 적대적 입력의 모양 고정, `turn_count` 재계산 |
-| `narration.test.mjs` | 9 | 마커 파싱 관용도(4가지 번호 표기), 마커 없을 때 degrade, **분할기 홀드백**(마커가 조각으로 와도 화면에 안 샘) |
-| `memory.test.mjs` | 11 | system 1개·마지막은 언제나 user, 최근 N턴 창, 오프닝은 첫 턴만, **인접 동일 역할 없음** |
-| `turn.test.mjs` | 13 | 서술/선택지 가르기, **`onNarration`에 마커 미유출**, 실제/추정 usage 집계, 선택지 없어도 성공, `truncated` 전달, 원본 세션 불변 |
-| `turn_api.test.mjs` | 11 | HTTP 계약, SSE 순서, **비밀 미유출**, **경로 조작 거부**, 429→502, **망가진 세계관 파일에도 프로세스 생존**, 모델 허용목록 |
-| `routes.test.mjs` | 4 | `/`가 랜딩을 주고 분석기 마크업을 주지 않음(static의 디렉터리 인덱스가 `/`를 가로채는 회귀를 잡는다), `/analyze`·`/check`·`/play` 도달 |
+| `budget.test.mjs` | 19 | Neuron 산수(표준 시나리오 199.7407), 미상 모델이 0이 아닌 `null`, UTC 일 단위 초기화 |
+| `cloudflare_client.test.mjs` | 27 | REST 계약, 오류 매핑 8종, **토큰 미유출**, abort 리스너 해제, `ABORTED`/`TIMEOUT` 구분, SSE 프레임 재조립·깨진 프레임 격리·`[DONE]` 이후 무시·`truncated` 두 경로 |
+| `card.test.mjs` | 36 | 카드 정규화, **id 결정성**, 파일의 `world_id`가 카드의 것을 이김, 빈 라벨 생략, 픽스처 로드, `stage` 정규화 |
+| `session.test.mjs` | 39 | 1부터인 `turn_index`, **불변 갱신**(`settings`·`card_ids` 포함), 적대적 입력의 모양 고정, `turn_count` 재계산, `current_scene` 정규화(**`visual`은 보존하지 않는다**) |
+| `narration.test.mjs` | 15 | 마커 파싱 관용도(4가지 번호 표기), 마커 없을 때 degrade, **분할기 홀드백**(마커가 조각으로 와도 화면에 안 샘), **장면 파싱 심볼이 정말 사라졌는지** |
+| `memory.test.mjs` | 16 | system 1개·마지막은 언제나 user, 최근 N턴 창, 오프닝은 첫 턴만, **인접 동일 역할 없음**, `[현재 상태]`의 장면 줄 |
+| `turn.test.mjs` | 28 | 서술/선택지 가르기, **`onNarration`에 마커 미유출**, 실제/추정 usage 집계, `truncated` 전달, 원본 세션 불변, **장면 판정 배선**(안 준 것 ≠ 실패, 신뢰도 미달 시 유지, `stage` 없는 world) |
+| `turn_api.test.mjs` | 19 | HTTP 계약, SSE 순서, **비밀 미유출**, **경로 조작 거부**, 429→502, **망가진 세계관 파일에도 프로세스 생존**, 모델 허용목록, **`scene` 이벤트와 캐시 재방문**, 402에도 턴 성공 |
+| `director.test.mjs` | 31 | 질문 조립(닫힌 criteria, **탈출구 없음**), 신뢰도 게이트와 경계, **목록 밖 답 거부**, `visual`은 조회값, `stage` 공백은 구조화 오류, **실제 세계관 파일의 `stage` 검증**(id 중복·`visual` 누락·한글 혼입) |
+| `jev_client.test.mjs` | 27 | **`ai/run/{model}`이 아닌 `ai/run`**, 게이트웨이 경유 URL과 `cf-aig-authorization`, **실물 이중 봉투**(`result.result.answers`), 402→`PAYMENT_REQUIRED`, **토큰 미유출**, 신뢰도 없으면 0이 아닌 `null`, **도메인 어휘 미유입** |
+| `scene.test.mjs` | 33 | 캐시 키가 **`location_id`**(화면 라벨이 흔들려도 같은 파일), 프롬프트 전량 영어·한글 게이트, 이미지 형식 감지, `seed` 미전송, 저장 실패에도 안 죽음 |
+| `judge.test.mjs` | 11 | 목록 밖 트리거 이름 제거, 온도 0.1, 클라이언트 없으면 구조화 오류 |
+| `sim.test.mjs` | 16 | 호감/회복 델타와 클램프, 단계 재계산, authored 목록 밖 무시 |
+| `image_client.test.mjs` | 25 | 모델 레지스트리(요청 바디·응답 모양이 셋 다 다름), 알 수 없는 모델은 조용히 기본값으로 안 감 |
+| `routes.test.mjs` | 5 | `/`가 랜딩을 주고 분석기 마크업을 주지 않음(static의 디렉터리 인덱스가 `/`를 가로채는 회귀를 잡는다), `/analyze`·`/check`·`/play` 도달 |
 | `env.test.mjs` | 7 | **이미 설정된 환경변수가 `.env`를 이김**, 따옴표·주석·`export` 접두·첫 `=` 분리, 깨진 줄과 없는 파일에도 안 던짐 |
 
 `npm test`가 커버하지 않는 것: 실제 Cloudflare 호출, 실제 서술 품질, 30턴 세션에서의
 캐릭터 일관성. 앞의 둘은 검증 방법이 없고 마지막은 M3의 감사 되먹임이 잡을 자리다.
+
+**장면 판정의 정확도는 `npm test`가 아니라 골든셋이 잰다.** 판정을 서술자에서 떼어낸
+덕에 입력과 정답이 고정된 오프라인 A/B가 가능해졌다 — 안 떼어냈으면 정확도를 재려고
+매번 70B로 산문을 생성해야 했고, 그건 느리고 비결정적이며 산문 프롬프트를 고칠 때마다
+결과가 달라져 회귀 측정이 사실상 불가능하다.
+
+```powershell
+npm run eval:scene -- --dry   # 호출 없이 골든셋과 세계관의 정합성만 점검
+npm run eval:scene            # 실제 Jev 호출. 30턴에 입력 약 2만 토큰 — 과금된다
+```
+
+골든셋은 `tests/fixtures/golden/scene_director.golden.json`(world당 15턴)이고, 각
+항목은 `{ 직전 장면, 서술, 정답 location_id/time/weather }`다. 정답 `changed`는 따로
+적지 않고 비교해서 계산한다 — 두 곳에 적으면 어긋난다.
+
+**로컬 `.env`에 `GEMINI_API_KEY`가 있으면 `turn_api.test.mjs` 3건이 실패한다.** 그
+테스트들이 "폴백이 설정돼 있지 않다"를 전제로 쓰였기 때문이고, 코드의 결함이 아니다.
+깨끗하게 돌리려면 `GEMINI_API_KEY="" GEMINI_MODEL="" npm test`.
 
 ## 옛 앱
 
@@ -695,6 +923,21 @@ MCP의 원문 배포 게이트에 그대로 작용한다.
   파일로 옮긴다.
 - `world_id` 정규식이 대소문자를 허용해 Windows(대소문자 무시)와 Linux에서 동작이 갈린다.
 - 스트림이 프레임 중간에 끊기면 `/play`의 문단이 pending 상태로 남고 설명이 없다.
+- **장면 전환 감지 recall이 기준에 못 미친다(0.652 / 기준 0.90).** 30턴 골든셋
+  측정 결과이고, 임계를 0까지 내려도 상한이 0.826이라 튜닝으로는 못 넘는다 — 병목은
+  게이트가 아니라 Jev가 "이동했다"를 못 알아채는 것이다. 다만 실패의 성격은 온건하다:
+  같은 측정에서 precision과 장소 정확도가 **1.000**이라 틀린 배경이 뜬 적은 없고,
+  실패 모드는 "낡은 그림이 남는다"이다. 남은 선택지 넷은
+  [M0 기록](./2026-09-20-m0-jev-probe.md) 5-5절에 있다.
+- 그 골든셋은 30턴(전환 23건)이라 **recall을 0.03 단위로밖에 못 잰다.** 기준 미달이
+  실제 실력인지 표본 노이즈인지 지금 데이터로는 못 가른다.
+- **Jev는 무료가 아니다.** Workers AI 하루 무료 할당 밖이고 AI Gateway 통합 과금으로
+  계산된다. 크레딧이 마르면 배경 그림이 조용히 갱신을 멈춘다(턴은 계속 성공한다).
+- **AI Gateway 경유 경로는 실물로 확인하지 못했다.** 코드는 `CF_GATEWAY_ID`로 분기하지만
+  이 계정에 게이트웨이가 없고(`default` 포함 전부 401 `AiGatewayError 2009`), 지금
+  `CF_API_TOKEN`에 AI Gateway 권한이 없어 만들지도 못했다. 직접 경로만 검증됐다.
+- 세계관에 장소를 빠뜨리면 **그 장소는 영영 안 그려진다.** 닫힌 집합의 대가이고,
+  운영 대응은 `[director]` 로그를 사람이 읽는 것뿐이다.
 
 ## 옛 앱
 

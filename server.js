@@ -16,6 +16,7 @@ const { createCloudflareClient } = require("./src/llm/cloudflare");
 const { createGeminiClient, DEFAULT_MODEL: DEFAULT_GEMINI_MODEL } = require("./src/llm/gemini");
 const { createFallbackClient } = require("./src/llm/fallback");
 const { createImageClient, DEFAULT_IMAGE_MODEL } = require("./src/llm/image");
+const { createJevClient } = require("./src/llm/jev");
 const { createBudget, DEFAULT_NARRATION_MODEL, NEURONS_PER_MTOK } = require("./src/llm/budget");
 const turn = require("./src/server/turn");
 const scene = require("./src/server/scene");
@@ -109,6 +110,32 @@ function getImageClient() {
     model: String(process.env.IMAGE_MODEL || "").trim() || DEFAULT_IMAGE_MODEL,
     width: Number(process.env.IMAGE_WIDTH) || undefined,
     height: Number(process.env.IMAGE_HEIGHT) || undefined
+  });
+}
+
+/**
+ * 미술감독(src/server/director.js)이 쓰는 Jev 클라이언트.
+ *
+ * 서술·이미지와 같은 Cloudflare 계정/토큰을 쓰지만 **과금은 다르다** — Jev는
+ * 서드파티 모델이라 Workers AI 하루 무료 할당(10,000 Neurons)이 아니라 AI Gateway
+ * 통합 과금으로 계산된다. 게이트웨이 잔액이 없으면 매 호출이 PAYMENT_REQUIRED로
+ * 떨어지고, 그 턴은 장면을 유지한 채 성공한다(src/server/turn.js의 runDirection).
+ * 자세한 경로와 과금 확인 기록은 doc/2026-09-20-m0-jev-probe.md에 있다.
+ *
+ * 타임아웃이 서술(120초)보다 훨씬 짧은 것은 의도다 — 이 호출은 독자가 이미 서술과
+ * 선택지를 다 받은 뒤에 배경 그림 하나를 위해 도는 것이라, 오래 매달릴 이유가 없다.
+ */
+function getDirectorClient() {
+  return createJevClient({
+    accountId: process.env.CF_ACCOUNT_ID,
+    apiToken: process.env.CF_API_TOKEN,
+    apiBase: process.env.CF_API_BASE,
+    // CF_GATEWAY_ID를 채우면 AI Gateway 데이터 플레인으로 나간다(로그·캐시·BYOK가
+    // 거기 붙는다). 비우면 v4 직접 경로다 — 둘은 URL만 다르고 바디·응답 계약이 같다.
+    gatewayId: process.env.CF_GATEWAY_ID,
+    // 게이트웨이에 "Authenticated Gateway"를 켰을 때만 필요하다.
+    aigToken: process.env.CF_AIG_TOKEN,
+    timeoutMs: Number(process.env.JEV_TIMEOUT_MS) || 30000
   });
 }
 
@@ -485,7 +512,12 @@ app.post("/api/turn", async (req, res) => {
       // 로컬 Ollama가 판정자다. 없거나(설치 안 함) 죽어 있으면 judge.js가
       // CONNECTION_FAILED를 돌려주고 runTurn은 judge_unavailable:true로 턴을
       // 그대로 성공시킨다 — 판정 하나 때문에 턴을 잃지 않는다(스펙 그대로).
-      judgeClient: getClient()
+      judgeClient: getClient(),
+      // 미술감독. 잔액이 없거나(PAYMENT_REQUIRED) 호출이 실패하면 runTurn이
+      // scene_unavailable:true로 턴을 그대로 성공시킨다 — 배경 그림 하나 때문에
+      // 턴을 잃지 않는다.
+      directorClient: getDirectorClient(),
+      confidenceThreshold: Number(process.env.SCENE_CONFIDENCE) || undefined
     });
   } catch (error) {
     console.error("[turn] error:", error);
@@ -528,7 +560,10 @@ app.post("/api/turn", async (req, res) => {
     // 이 턴을 실제로 쓴 제공처. Cloudflare가 아니면 budget_unknown이 함께 true가
     // 되는데(Neuron은 Cloudflare의 단위다 — turn.js 참고), 이 필드가 있어야 UI가
     // "단가를 모른다"와 "Cloudflare가 아니라 무료 폴백이 썼다"를 구분해 보여 준다.
-    provider: result.provider
+    provider: result.provider,
+    // 장면 판정 호출이 실패했을 때만 true다(judge_unavailable과 같은 원칙 —
+    // 모르는 값을 "없음"으로 적지 않는다). 이 턴은 장면을 유지한 채 성공했다.
+    scene_unavailable: result.scene_unavailable
   };
   if (sse) {
     sse.send("done", body);
@@ -542,7 +577,30 @@ app.post("/api/turn", async (req, res) => {
   // 실패해도(Workers AI 오류, 디스크 쓰기 실패 등) 턴은 이미 성공한 채로 끝났다 —
   // 그림 한 장 때문에 턴을 실패시키지 않는다. SSE가 아니면 보낼 채널이 없으니
   // 그래도 캐시는 데워 두고 조용히 끝낸다(다음에 같은 장면이 오면 즉시 나간다).
-  if (result.scene) {
+  // 장면 판정이 실패했으면 왜 실패했는지 운영자가 알아야 한다 — 특히
+  // PAYMENT_REQUIRED(게이트웨이 잔액)처럼 사람이 고쳐야 하는 것. 플레이어 화면에는
+  // 그냥 배경이 안 바뀐 것으로만 보인다.
+  if (result.scene_unavailable) {
+    console.warn("[director] 장면 판정 실패 — 장면을 유지합니다.");
+  }
+
+  // 신뢰도 미달로 장면을 유지한 턴. 이걸 서술과 함께 모으면 world.stage에 빠진
+  // 장소의 목록이 된다(설계 6절의 "운영 대응은 로그다"). 서술은 앞부분만 남긴다 —
+  // 로그에 본문을 통째로 쏟으면 읽을 수 없다.
+  if (result.scene_low_confidence) {
+    const answers = result.scene_answers || {};
+    const summary = ["place", "time", "weather"]
+      .map((key) => {
+        const a = answers[key];
+        return a ? `${key}=${a.choice}(${a.confidence})` : `${key}=?`;
+      })
+      .join(" ");
+    console.warn(`[director] 신뢰도 미달로 장면 유지: ${summary} | ${result.turn.narration.slice(0, 80)}`);
+  }
+
+  // 그림을 그릴지는 scene이 아니라 scene_changed가 정한다 — 장면이 안 바뀐 턴에도
+  // result.scene에는 (직전 장면이 있으면) 값이 들어 있다.
+  if (result.scene_changed && result.scene) {
     try {
       const sceneResult = await scene.resolveScene({
         world: loaded.world,

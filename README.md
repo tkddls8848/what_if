@@ -5,7 +5,7 @@
 - **인터랙티브 소설**(`/play`) — 캐릭터 카드와 세계관을 재료로, 장면 서술을 스트리밍하고 선택지 3개를 제시합니다. 사용자는 행동을 직접 쓰거나 선택지를 고릅니다. 서술은 Cloudflare Workers AI가 생성합니다. M1까지 구현했습니다.
 - **소설 분석기**(`/`, `/check`) — 한국어 소설에서 인물·장소·사건·상태 변화를 추출하고, 독서 시점 기준으로 조회하거나 what-if 분기를 만듭니다. 규칙 기반 분석은 즉시 실행되고, Ollama 4B~7B 모델로 상세 분석을 추가할 수 있습니다. 피보팅이 끝나면 걷어냅니다.
 
-피보팅의 방향과 남은 마일스톤은 [`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`](doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md)에, 설계 근거는 [`doc/README.md`](doc/README.md)에 있습니다.
+피보팅의 방향과 남은 마일스톤은 [`doc/2026-09-05-interactive-fiction-pivot-design.md`](doc/2026-09-05-interactive-fiction-pivot-design.md)에, 설계 근거는 [`doc/README.md`](doc/README.md)에 있습니다.
 
 ## 실행
 
@@ -41,6 +41,24 @@ CF_API_TOKEN=<Workers AI 토큰>
 직접 넣어도 그대로 동작합니다.
 
 무료 할당은 하루 10,000 Neurons이고, 기본 모델 `@cf/meta/llama-3.3-70b-instruct-fp8-fast` 기준으로 턴당 약 200 Neurons — **하루 약 50턴**입니다. 남은 양은 화면 오른쪽 위에 표시됩니다.
+
+### 장면 판정 (배경 그림)
+
+배경 그림은 장면이 바뀐 턴에만 다시 그립니다. "지금 어디인가"는 서술과 분리된
+호출(TypeSafe Jev)이 매 턴 판정하고, 고를 수 있는 장소·시간대·날씨는 세계관 파일의
+`world.stage`에 **미리 적어 둔 닫힌 목록**입니다 — 목록 밖의 값이 나오는 일이
+구조적으로 없어서 같은 장소는 항상 같은 그림 파일이 됩니다.
+
+**Jev는 Workers AI 무료 할당 밖입니다.** 서드파티 모델이라 AI Gateway 통합 과금으로
+계산되고, 게이트웨이에 선불 크레딧이 없으면 매 호출이 402로 떨어집니다. 그래도
+**턴은 성공한 채 끝나고** 배경만 직전 것이 유지됩니다(응답의 `scene_unavailable`이
+`true`가 됩니다). 자격증명은 `CF_ACCOUNT_ID`/`CF_API_TOKEN`을 그대로 쓰며 새 키는
+필요 없습니다. 선택 설정은 `.env.example`의 `CF_GATEWAY_ID`·`SCENE_CONFIDENCE`를
+보세요.
+
+장소를 세계관에 안 적으면 그 장소는 영영 안 그려집니다. 신뢰도가 모자라 장면을
+유지한 턴은 `[director]` 로그로 남으니, 그걸 읽고 `world.stage`에 빠진 장소를
+추가하면 됩니다.
 
 ### Gemini 무료 티어 폴백 (선택 사항)
 
@@ -83,6 +101,7 @@ OLLAMA_TIMEOUT_MS=120000
 ### 인터랙티브 소설 (`/play`)
 
 - `data/worlds/*.json`의 세계관·캐릭터 카드로 장면을 생성
+- 닫힌 무대 집합(`world.stage`) 기반 장면 판정과 배경 이미지 생성·캐시
 - 3인칭 장면 서술 SSE 스트리밍과 선택지 3개
 - 자유 입력과 선택지 병행
 - Neuron 사용량 계량과 잔량 표시
@@ -164,7 +183,6 @@ scripts/                  평가·감사 CLI
 tests/                    회귀 테스트와 fixture
 texts/                    기본 작품
 doc/                      기술 설계와 데이터 계약
-doc_nextsession/          피보팅 설계와 마일스톤 계획
 .claude/skills/           분석·검수·평가 절차
 ```
 
@@ -174,7 +192,7 @@ doc_nextsession/          피보팅 설계와 마일스톤 계획
 
 설계 근거와 데이터 계약은 [`doc/README.md`](doc/README.md),
 피보팅의 방향과 남은 마일스톤은
-[`doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md`](doc_nextsession/2026-09-05-interactive-fiction-pivot-design.md)에 있다.
+[`doc/2026-09-05-interactive-fiction-pivot-design.md`](doc/2026-09-05-interactive-fiction-pivot-design.md)에 있다.
 
 ## 평가
 
@@ -182,6 +200,8 @@ doc_nextsession/          피보팅 설계와 마일스톤 계획
 npm run eval
 npm run eval -- --live qwen3.5:4b
 npm run eval:qa
+npm run eval:scene            # 장면 판정 골든셋 (실제 Jev 호출 — 과금됩니다)
+npm run eval:scene -- --dry   # 호출 없이 골든셋 점검만
 npm run audit -- --doc gamja --severity error
 ```
 
