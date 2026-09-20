@@ -11,6 +11,7 @@
     "audit": "node --no-warnings scripts/audit_report.mjs",
     "eval": "node --no-warnings scripts/eval_extraction.mjs",
     "eval:qa": "node --no-warnings scripts/eval_asof_qa.mjs",
+    "eval:scene": "node --no-warnings scripts/eval_scene_director.mjs",
     "verify:refs": "node --no-warnings scripts/verify_references.mjs"
   },
   "dependencies": {
