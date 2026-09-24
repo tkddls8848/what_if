@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Novel IF Reader</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <div class="app-shell">
@@ -17,7 +17,7 @@
           <nav class="route-nav" aria-label="페이지 이동">
             <a href="/">홈</a>
             <a href="/analyze" data-route-link="home">분석</a>
-            <a href="/check" data-route-link="check">검수</a>
+            <a href="/analyze/check" data-route-link="check">원문 검수</a>
           </nav>
           <label class="sample-picker" for="sampleSelect">
             <span>샘플</span>
@@ -218,6 +218,6 @@
       </main>
     </div>
 
-    <script type="module" src="src/app/controller.js"></script>
+    <script type="module" src="/src/app/controller.js"></script>
   </body>
 </html>

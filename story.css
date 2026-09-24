@@ -1,0 +1,27 @@
+:root { color-scheme: light dark; --paper:#faf9f6; --ink:#262721; --line:#cfcec5; --soft:#eeede5; --accent:#526c59; }
+@media(prefers-color-scheme:dark) { :root { --paper:#171b19; --ink:#eeeae0; --line:#424b43; --soft:#222b25; --accent:#a3c4a8; } }
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.8 system-ui,"Malgun Gothic",sans-serif; }
+nav { display:flex; flex-wrap:wrap; gap:1.5rem; padding:1rem max(1rem,calc((100vw - 1080px)/2)); border-bottom:1px solid var(--line); }
+a { color:inherit; text-underline-offset:5px; }
+nav a { text-decoration:none; }
+nav a[aria-current=page] { color:var(--accent); font-weight:700; }
+.library { max-width:1080px; margin:auto; padding:2rem 1rem 5rem; }
+.eyebrow { letter-spacing:.2em; color:var(--accent); font-size:.8rem; }
+h1 { font-size:2rem; margin:.3rem 0; } h2 { font-size:1.3rem; } h3 { font-size:1rem; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:1.2rem; }
+.story-card, .turn-card { padding:1.4rem; border:1px solid var(--line); border-radius:12px; margin:1rem 0; }
+.story-card p, .turn-card p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.muted, #intro, footer { opacity:.7; font-size:.9rem; }
+.actions { display:flex; flex-wrap:wrap; gap:.7rem; margin:1rem 0; align-items:center; }
+button, .button { border:1px solid var(--line); background:var(--soft); color:inherit; padding:.6rem 1rem; border-radius:6px; cursor:pointer; font:inherit; text-decoration:none; }
+button:disabled { opacity:.5; cursor:wait; }
+label { display:block; margin:.6rem 0; }
+input, textarea, select { display:block; width:100%; color:inherit; background:var(--paper); border:1px solid var(--line); border-radius:4px; padding:.6rem; font:inherit; }
+textarea { min-height:6rem; resize:vertical; }
+summary { cursor:pointer; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+footer { margin-top:3rem; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+#notice:not(:empty) { border-left:3px solid var(--accent); padding:.6rem 1rem; background:var(--soft); }

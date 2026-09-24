@@ -16,6 +16,10 @@ export const CARD_STATUS = {
   MANUAL: "manual"
 };
 
+export function isPlayableCard(card) {
+  return [CARD_STATUS.CONFIRMED, CARD_STATUS.EDITED, CARD_STATUS.MANUAL].includes(card?.status);
+}
+
 function str(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -216,7 +220,9 @@ export function normalizeCard(raw = {}) {
     relationships: Array.isArray(raw.relationships) ? raw.relationships : [],
     knowledge_as_of: str(raw.knowledge_as_of),
     source: raw.source && typeof raw.source === "object" ? raw.source : { type: "manual" },
-    status: str(raw.status) || CARD_STATUS.SUGGESTED
+    status: str(raw.status) || CARD_STATUS.SUGGESTED,
+    method: str(raw.method),
+    confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence) ? Math.max(0, Math.min(1, raw.confidence)) : null
   };
 }
 
@@ -312,6 +318,7 @@ function renderCardForNarrator(card, stage) {
   out += line("성격", card.persona.traits);
   out += line("가치관", card.persona.values);
   out += line("금기", card.persona.taboos);
+  out += line("원작 지식의 기준 시점 (그 이후 사실은 알고 있다고 가정하지 않음)", card.knowledge_as_of);
   out += line("약점", card.persona.weaknesses);
 
   const speech = [];

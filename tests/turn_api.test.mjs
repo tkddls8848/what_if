@@ -9,6 +9,9 @@ import test, { after } from "node:test";
 process.env.NOVEL_IF_CACHE = "0";
 process.env.CF_ACCOUNT_ID = "acc-test";
 process.env.CF_API_TOKEN = "tok-secret";
+// 개인 .env의 폴백 키·모델이 가짜 제공처 테스트에 들어오지 않도록 고정한다.
+process.env.GEMINI_API_KEY = "";
+process.env.GEMINI_MODEL = "gemini-2.5-flash";
 // 이 파일의 가짜 Cloudflare 서버(startFakeCloudflare)는 flux-1-schnell 모양의
 // 응답({result:{image}})만 흉내 낸다. 이미지 모델 레지스트리가 생기면서
 // server.js의 실제 기본값은 phoenix-1.0(바이너리 응답, 다른 요청 바디)으로

@@ -6,6 +6,13 @@ const {
   normalizeWorld, normalizeCard, loadWorldFile, renderPrefix, renderNarratorPrefix, renderJudgeContext
 } = await import("../src/core/card.js");
 
+test("검수한 원작 지식 시점이 서술자의 카드에 전달된다", () => {
+  const card = normalizeCard({canonical_name:"인물",knowledge_as_of:"원작 3화까지"});
+  const prompt = renderNarratorPrefix({world:normalizeWorld({world_id:"demo"}),cards:[card]});
+  assert.ok(prompt.includes("원작 3화까지"));
+  assert.ok(prompt.includes("그 이후 사실은 알고 있다고 가정하지 않음"));
+});
+
 test("normalizeCard: 빠진 필드를 빈 값으로 채우고 모양을 고정한다", () => {
   const card = normalizeCard({ canonical_name: "아스카", world_id: "demo" });
   assert.equal(card.canonical_name, "아스카");

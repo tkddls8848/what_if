@@ -156,6 +156,7 @@ async function runTurn({
 } = {}) {
   const input = String(userInput || "").trim();
   if (!input) return errorResult("INVALID_ARGUMENT", "행동을 입력하세요.", false);
+  if (session?.ended) return errorResult("INVALID_ARGUMENT", "끝난 이야기입니다. 기록에서 분기하거나 새 이야기를 시작하세요.", false);
   // budget이 없으면 조용히 새 장부를 만들지 않는다. server.js는 항상 프로세스 전역
   // turnBudget을 넘기지만, 앞으로 생길 다른 호출부가 이 인자를 깜빡하면 매 턴 새
   // 장부가 생겨 미터가 영원히 0으로 보인다 — budget.js가 막으려던 바로 그 거짓말이다.
@@ -259,6 +260,8 @@ async function runTurn({
   // direction.scene은 항상 "이번 턴에 화면이 들고 갈 장면"이다 — 바뀌었으면 새
   // 장면, 아니면 직전 장면 그대로. 판정이 실패했거나 신뢰도가 모자랐으면
   // director가 이미 직전 장면을 그대로 돌려줬으므로 여기서 다시 고를 것이 없다.
+  turn.truncated = Boolean(generated.truncated);
+  turn.snapshot = { sim: structuredClone(simState), current_scene: structuredClone(direction.scene || null) };
   const nextSession = {
     ...sessionApi.appendTurn(session, turn),
     sim: simState,

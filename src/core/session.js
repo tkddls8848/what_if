@@ -176,6 +176,7 @@ export function createSession({
 }
 
 export function normalizeTurn(raw = {}) {
+  raw = raw && typeof raw === "object" ? raw : {};
   return {
     turn_id: str(raw.turn_id) || newId("turn"),
     session_id: str(raw.session_id),
@@ -188,12 +189,18 @@ export function normalizeTurn(raw = {}) {
     audit: { violations: [] },
     usage: raw.usage && typeof raw.usage === "object" ? raw.usage : null,
     model: str(raw.model),
-    extraction_failed: Boolean(raw.extraction_failed)
+    extraction_failed: Boolean(raw.extraction_failed),
+    truncated: Boolean(raw.truncated),
+    snapshot: raw.snapshot && typeof raw.snapshot === "object" ? {
+      sim: normalizeSim(raw.snapshot.sim, Object.keys(raw.snapshot.sim?.characters || {})),
+      current_scene: normalizeCurrentScene(raw.snapshot.current_scene)
+    } : null
   };
 }
 
 /** 브라우저가 보낸 세션을 신뢰하지 않는다. turn_count는 저장값을 믿지 않고 다시 센다. */
 export function normalizeSession(raw = {}) {
+  raw = raw && typeof raw === "object" ? raw : {};
   const settings = raw.settings || {};
   const turns = list(raw.turns).map(normalizeTurn);
   const cardIds = list(raw.card_ids).map(str).filter(Boolean);
@@ -205,6 +212,9 @@ export function normalizeSession(raw = {}) {
     opening: str(raw.opening),
     turns,
     turn_count: turns.length,
+    ended: Boolean(raw.ended),
+    parent_session_id: str(raw.parent_session_id),
+    branch_turn: Math.max(0, Number.isInteger(raw.branch_turn) ? raw.branch_turn : 0),
     // 브라우저가 보낸 값은 신뢰하지 않는다: 숫자는 클램프, stage는 저장값이 아니라
     // affection에서 다시 계산, card_ids에 없는 카드는 버린다(normalizeSim 참고).
     sim: normalizeSim(raw.sim, cardIds),
@@ -242,4 +252,35 @@ export function recentTurns(session, count = DEFAULT_RECENT_TURNS) {
   const turns = list(session?.turns);
   const n = positive(count, DEFAULT_RECENT_TURNS);
   return turns.slice(Math.max(0, turns.length - n));
+}
+
+/** 분기에는 선택한 턴까지의 상태만 복사한다. 미래의 관계·장소를 가져오지 않는다. */
+export function forkSession(session, at) {
+  const source = normalizeSession(session);
+  if (!Number.isInteger(at) || at < 0 || at > source.turns.length) {
+    throw new Error("분기할 턴을 선택하세요.");
+  }
+  const snapshot = at === 0 ? null : source.turns[at - 1].snapshot;
+  if (at > 0 && !snapshot) throw new Error("이 턴에는 상태 기록이 없어 분기할 수 없습니다. 첫 장면에서 시작할 수 있습니다.");
+  const branch = createSession({ ...source, ...source.settings });
+  branch.session_id = newId("session");
+  branch.created_at = new Date().toISOString();
+  branch.parent_session_id = source.session_id;
+  branch.branch_turn = at;
+  branch.turns = structuredClone(source.turns.slice(0, at)).map((turn) => ({
+    ...turn, turn_id: newId("turn"), session_id: branch.session_id
+  }));
+  branch.turn_count = at;
+  if (snapshot) {
+    branch.sim = structuredClone(snapshot.sim);
+    branch.current_scene = structuredClone(snapshot.current_scene);
+  }
+  return branch;
+}
+
+export function sessionMarkdown(session) {
+  return [`# ${session.world_id}`, session.opening, ...session.turns.flatMap((turn) => [
+    `## ${turn.index}턴`, `> ${turn.user_input.replace(/\n/g, "\n> ")}`, turn.narration,
+    turn.truncated ? "(장면이 도중에 끊김)" : ""
+  ])].filter(Boolean).join("\n\n") + "\n";
 }

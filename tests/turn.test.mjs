@@ -54,7 +54,17 @@ test("runTurn: 서술과 선택지를 갈라 턴을 만들고 세션에 붙인�
   assert.equal(result.turn.user_input, "옆에 선다");
   assert.equal(result.turn.model, MODEL);
   assert.equal(result.session.turn_count, 1);
+  assert.deepEqual(result.turn.snapshot.sim, result.session.sim);
+  assert.notEqual(result.turn.snapshot.sim, result.session.sim);
   assert.equal(session.turn_count, 0, "원본 세션을 바꾸면 안 된다");
+});
+
+test("runTurn: 종료된 세션은 제공처 호출 전에 거부한다", async () => {
+  const session = { ...createSession({world_id:"demo"}), ended:true };
+  const result = await runTurn({world,cards,session,userInput:"계속",budget:budget(),
+    client:{narrate() { throw new Error("종료한 이야기에 제공처를 호출하면 안 된다"); }} });
+  assert.equal(result.ok,false);
+  assert.equal(result.error_code,"INVALID_ARGUMENT");
 });
 
 test("runTurn: onNarration에는 마커 이후가 절대 오지 않는다", async () => {
@@ -341,6 +351,7 @@ test("runTurn: 판정된 장면이 돌려준 세션의 current_scene에 실린�
     directorClient: fakeDirectorClient({ answers: CONFIDENT_CLASSROOM })
   });
   assert.equal(result.session.current_scene.location_id, "classroom_3_2");
+  assert.deepEqual(result.turn.snapshot.current_scene, result.session.current_scene);
   assert.equal(result.session.current_scene.place, "3학년 2반 교실");
 });
 

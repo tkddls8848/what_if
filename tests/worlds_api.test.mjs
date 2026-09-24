@@ -33,6 +33,29 @@ function loadDemoRaw() {
   return JSON.parse(fs.readFileSync(path.join(WORLDS_DIR, "demo.json"), "utf8"));
 }
 
+test("카드 검수 저장은 세계관과 다른 카드 필드를 보존하고 잘못된 요청을 거부한다", async () => {
+  const worldId = `review-test-${process.pid}`;
+  const file = path.join(WORLDS_DIR, `${worldId}.json`);
+  const raw = { world: {world_id:worldId,title:"검수 테스트",opening:"첫 장면"},
+    cards:[{card_id:"a",canonical_name:"인물",persona:{values:["약속"]},romance:{care_signs:["문을 잡는다"]}}] };
+  fs.writeFileSync(file, JSON.stringify(raw), {flag:"wx"});
+  const {server,port} = await listen();
+  const url = `http://127.0.0.1:${port}/api/worlds/${worldId}/cards/a`;
+  const payload = {canonical_name:"수정한 인물",traits:["신중"],taboos:["거짓말"],examples:["괜찮아."],knowledge_as_of:"1화",status:"confirmed"};
+  try {
+    const response = await fetch(url, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    assert.equal(response.status, 200);
+    const saved = JSON.parse(fs.readFileSync(file,"utf8"));
+    assert.deepEqual(saved.world,raw.world);
+    assert.deepEqual(saved.cards[0].romance,raw.cards[0].romance);
+    assert.deepEqual(saved.cards[0].persona.values,["약속"]);
+    assert.equal(saved.cards[0].canonical_name,"수정한 인물");
+    const bad = await fetch(url, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({...payload,traits:"잘못된 값"})});
+    assert.equal(bad.status,400);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file,"utf8")),saved);
+  } finally { server.close(); fs.unlinkSync(file); }
+});
+
 test("GET /api/worlds: 두 세계관을 제목·등장인물 이름과 함께 목록으로 돌려준다", async () => {
   const demoRaw = loadDemoRaw();
   const { server, port } = await listen();

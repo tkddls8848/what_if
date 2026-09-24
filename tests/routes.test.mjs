@@ -14,15 +14,15 @@ function listen() {
   });
 }
 
-test("GET /: 랜딩 페이지를 돌려주고, 분석기 마크업은 섞이지 않는다", async () => {
+test("GET /: 플레이를 기본 화면으로 제공한다", async () => {
   const { server, port } = await listen();
   try {
     const response = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(response.status, 200);
     const body = await response.text();
-    assert.ok(body.includes("Novel IF"), "랜딩 페이지 제목이 없다");
-    assert.ok(body.includes('href="/play"'), "/play 링크가 없다");
-    assert.ok(body.includes('href="/analyze"'), "/analyze 링크가 없다");
+    assert.ok(body.includes('id="form"') && body.includes('id="choices"'));
+    assert.ok(body.includes('href="/worlds"'));
+    assert.ok(body.includes('href="/session"'));
     // index: false를 빼먹으면 정적 미들웨어가 index.html을 대신 내려준다 — 그 회귀를
     // 잡기 위한 핵심 단언이다.
     assert.ok(!body.includes("sampleSelect"), "분석기 마크업(index.html)이 '/'에서 나왔다");
@@ -43,16 +43,29 @@ test("GET /analyze: 분석기 워크스페이스(index.html)를 돌려준다", a
   }
 });
 
-test("GET /check: 분석기 워크스페이스(index.html)를 돌려준다", async () => {
+test("GET /analyze/check: 원문 검수를 분석기 아래에서 제공한다", async () => {
   const { server, port } = await listen();
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/check`);
+    const response = await fetch(`http://127.0.0.1:${port}/analyze/check`);
     assert.equal(response.status, 200);
     const body = await response.text();
     assert.ok(body.includes("sampleSelect"), "분석기 마크업이 없다");
   } finally {
     server.close();
   }
+});
+
+test("세계관, 카드 검수, 이야기 기록은 동일한 소설 탐색 메뉴를 제공한다", async () => {
+  const { server, port } = await listen();
+  try {
+    for (const route of ["/worlds", "/check", "/session"]) {
+      const response = await fetch(`http://127.0.0.1:${port}${route}`);
+      assert.equal(response.status, 200);
+      const body = await response.text();
+      assert.ok(body.includes('/src/app/library.js'));
+      assert.ok(!body.includes('sampleSelect'));
+    }
+  } finally { server.close(); }
 });
 
 test("GET /play: 인터랙티브 소설 페이지를 돌려준다", async () => {

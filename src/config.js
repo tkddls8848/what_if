@@ -8,7 +8,7 @@ export const SAMPLE_TEXTS = [
     title: "날개",
     author: "이상",
     year: "1936",
-    url: "texts/wings.txt",
+    url: "/texts/wings.txt",
     source_url: "https://www.davincimap.co.kr/davBase/Source/davSource.jsp?Job=Body&SourID=SOUR001427",
     rights: "public-domain-candidate"
   },
@@ -17,7 +17,7 @@ export const SAMPLE_TEXTS = [
     title: "감자",
     author: "김동인",
     year: "1925",
-    url: "texts/gamja.txt",
+    url: "/texts/gamja.txt",
     source_url: "https://ko.wikisource.org/wiki/%EA%B0%90%EC%9E%90",
     rights: "public-domain-old-70"
   }

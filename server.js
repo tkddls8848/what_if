@@ -9,6 +9,9 @@ const prompts = require("./src/server/prompts");
 const cache = require("./src/server/cache");
 const whatif = require("./src/server/whatif");
 const wikisource = require("./src/server/wikisource");
+const { compileCards } = require("./src/server/compile_card");
+const { fetchSource } = require("./src/server/fetch_source");
+const { saveGeneratedCards } = require("./src/server/card_library");
 
 const fs = require("fs");
 
@@ -185,7 +188,7 @@ app.use(
     extensions: ["html"],
     // index 옵션 기본값이 "index.html"이라 그대로 두면 정적 미들웨어가 "/"를 먼저
     // 가로채 index.html을 내려주고, 아래 app.get("/")는 영영 실행되지 않는다.
-    // "/"를 랜딩 페이지로 쓰려면 여기서 디렉터리 인덱스를 꺼야 한다.
+    // "/"를 플레이 화면으로 쓰려면 여기서 디렉터리 인덱스를 꺼야 한다.
     index: false,
     setHeaders(res, filePath) {
       if (filePath.endsWith(".txt")) {
@@ -196,15 +199,19 @@ app.use(
 );
 
 app.get("/", (_req, res) => {
-  res.sendFile(path.join(ROOT, "home.html"));
+  res.sendFile(path.join(ROOT, "play.html"));
 });
 
 app.get("/analyze", (_req, res) => {
   res.sendFile(path.join(ROOT, "index.html"));
 });
 
-app.get("/check", (_req, res) => {
+app.get("/analyze/check", (_req, res) => {
   res.sendFile(path.join(ROOT, "index.html"));
+});
+
+app.get(["/worlds", "/check", "/session"], (_req, res) => {
+  res.sendFile(path.join(ROOT, "library.html"));
 });
 
 app.get("/play", (_req, res) => {
@@ -448,6 +455,76 @@ app.get("/api/worlds/:world_id", async (req, res) => {
   res.json({ world: loaded.world, cards: loaded.cards });
 });
 
+/** 사람이 검수한 카드만 수정한다. 나머지 저작된 세계관 필드는 그대로 보존한다. */
+app.post("/api/worlds/:world_id/compile", async (req, res) => {
+  const loaded = await loadWorld(req.params.world_id);
+  if (!loaded.ok) return res.status(loaded.status).json(errorBody(loaded.error_code,loaded.message));
+  const { text, url, model = "qwen3.5:4b" } = req.body || {};
+  if ((typeof text !== "string" || !text.trim()) === (typeof url !== "string" || !url.trim()) ||
+      typeof model !== "string" || !isAllowedSmallModel(model)) {
+    return res.status(400).json(errorBody("INVALID_ARGUMENT","설정 본문 또는 Fandom URL 하나와 4B~7B Ollama 모델을 지정하세요."));
+  }
+  const sse = String(req.headers.accept || "").includes("text/event-stream") ? startSse(res) : null;
+  const abort = watchDisconnect(res);
+  function finishError(result) {
+    if (abort.signal.aborted) return;
+    if (sse) {sse.send("error",errorBody(result.error_code,result.message));sse.end();}
+    else res.status(result.error_code === "INVALID_ARGUMENT" ? 400 : 502).json(errorBody(result.error_code,result.message));
+  }
+  try {
+    let source = {ok:true,text,source_url:""};
+    if (url) {
+      sse?.send("progress",{message:"설정 문서를 가져오고 있습니다."});
+      source = await fetchSource(url);
+      if (!source.ok) return finishError(source);
+    }
+    const result = await compileCards({text:source.text,sourceUrl:source.source_url,worldId:req.params.world_id,
+      model,client:getClient(),signal:abort.signal,onProgress:(progress) => sse?.send("progress",progress)});
+    if (!result.ok) return finishError(result);
+    if (abort.signal.aborted) return;
+    const saved = saveGeneratedCards(path.join(ROOT,"data","worlds"),req.params.world_id,result);
+    const body = {ok:true,card_ids:saved.added.map((card) => card.card_id),added:saved.added.length,skipped:saved.skipped,diagnostics:result.diagnostics};
+    if (sse) {sse.send("done",body);sse.end();} else res.json(body);
+  } catch (error) {
+    console.error("[card-compile]",error.message);
+    finishError({error_code:"INTERNAL",message:"카드 생성 또는 저장에 실패했습니다. 기존 카드는 유지됩니다."});
+  }
+});
+
+app.put("/api/worlds/:world_id/cards/:card_id", async (req, res) => {
+  const loaded = await loadWorld(req.params.world_id);
+  if (!loaded.ok) return res.status(loaded.status).json(errorBody(loaded.error_code, loaded.message));
+  const card = loaded.cards.find((item) => item.card_id === req.params.card_id);
+  if (!card) return res.status(404).json(errorBody("NOT_FOUND", "카드를 찾을 수 없습니다."));
+  const { canonical_name, traits, taboos, examples, knowledge_as_of, status } = req.body || {};
+  const validLines = (value) => Array.isArray(value) && value.length <= 50 && value.every((line) => typeof line === "string" && line.length <= 2000);
+  if (typeof canonical_name !== "string" || !canonical_name.trim() || canonical_name.length > 100 ||
+      !validLines(traits) || !validLines(taboos) || !validLines(examples) ||
+      typeof knowledge_as_of !== "string" || knowledge_as_of.length > 2000 ||
+      !["confirmed", "edited", "rejected"].includes(status)) {
+    return res.status(400).json(errorBody("INVALID_ARGUMENT", "이름, 성격, 금기, 대사, 지식 시점과 검수 상태를 확인하세요."));
+  }
+  try {
+    const file = path.join(ROOT, "data", "worlds", `${req.params.world_id}.json`);
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    const index = loaded.cards.findIndex((item) => item.card_id === card.card_id);
+    const current = raw.cards[index];
+    raw.cards[index] = { ...current, canonical_name: canonical_name.trim(), knowledge_as_of, status,
+      persona: { ...current.persona, traits, taboos }, speech: { ...current.speech, examples } };
+    const temp = `${file}.${require("crypto").randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(temp, JSON.stringify(raw, null, 2) + "\n", { flag: "wx" });
+      fs.renameSync(temp, file);
+    } finally {
+      if (fs.existsSync(temp)) fs.unlinkSync(temp);
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("[card] save error:", error);
+    res.status(500).json(errorBody("INTERNAL", "카드를 저장하지 못했습니다."));
+  }
+});
+
 app.get("/api/cf/health", (_req, res) => {
   res.json({
     ok: true,
@@ -494,6 +571,14 @@ app.post("/api/turn", async (req, res) => {
     return;
   }
 
+  const { isPlayableCard } = await import("./src/core/card.js");
+  const playableCards = loaded.cards.filter((card) => isPlayableCard(card) &&
+    (!session.card_ids.length || session.card_ids.includes(card.card_id)));
+  if (!playableCards.length) {
+    res.status(400).json(errorBody("INVALID_ARGUMENT", "이야기에 참여할 캐릭터가 없습니다. 세계관에서 카드를 확인하세요."));
+    return;
+  }
+
   const sse = wantsStream ? startSse(res) : null;
   const abort = watchDisconnect(res);
 
@@ -501,7 +586,7 @@ app.post("/api/turn", async (req, res) => {
   try {
     result = await turn.runTurn({
       world: loaded.world,
-      cards: loaded.cards,
+      cards: playableCards,
       session,
       userInput,
       client: getNarrationClient(),
