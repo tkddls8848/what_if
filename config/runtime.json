@@ -1,0 +1,20 @@
+{
+  "PORT": 3000,
+  "CF_API_BASE": "https://api.cloudflare.com/client/v4",
+  "CF_TIMEOUT_MS": 120000,
+  "GEMINI_API_BASE": "https://generativelanguage.googleapis.com/v1beta",
+  "GEMINI_MODEL": "gemini-2.5-flash",
+  "GEMINI_TIMEOUT_MS": 120000,
+  "IMAGE_MODEL": "@cf/leonardo/phoenix-1.0",
+  "IMAGE_WIDTH": 512,
+  "IMAGE_HEIGHT": 512,
+  "CF_IMAGE_TIMEOUT_MS": 60000,
+  "CF_GATEWAY_ID": "",
+  "JEV_TIMEOUT_MS": 30000,
+  "SCENE_CONFIDENCE": 0.7,
+  "OLLAMA_URL": "http://127.0.0.1:11434",
+  "OLLAMA_TIMEOUT_MS": 120000,
+  "NOVEL_IF_CACHE": true,
+  "NOVEL_IF_CACHE_DIR": "cache",
+  "SCENE_ROOT": "."
+}

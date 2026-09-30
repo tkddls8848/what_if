@@ -1,5 +1,7 @@
 # Novel IF Reader
 
+코드를 수정할 때는 [기능별 코드 지도](doc/CODE_MAP.md)에서 진입점을 찾으세요.
+
 **캐릭터와 세계관을 바탕으로, 사용자의 행동이 다음 장면을 만드는 인터랙티브 소설 앱입니다.**
 
 - **이야기**(`/`, `/play`) — 장면을 읽고 행동을 직접 쓰거나 선택지를 고릅니다. Cloudflare Workers AI 또는 Gemini가 서술을 생성합니다.
@@ -40,10 +42,22 @@ CF_ACCOUNT_ID=<account id>
 CF_API_TOKEN=<Workers AI 토큰>
 ```
 
-`.env`는 `.gitignore`에 있어 커밋되지 않습니다. **실제 환경변수가 항상
-우선합니다** — `$env:CF_API_TOKEN = "..."`처럼 셸에서 직접 넣거나 CI/배포가
-주입한 값이 있으면 `.env`의 같은 키는 무시됩니다. `.env` 없이 예전처럼 셸에
-직접 넣어도 그대로 동작합니다.
+`.env`는 자격증명 전용이며 `CF_ACCOUNT_ID`, `CF_API_TOKEN`, `GEMINI_API_KEY`,
+`CF_AI_GATEWAY_TOKEN` 네 키만 로드합니다. 다른 키는 전역 환경에 넣지 않습니다.
+셸/CI에서 이미 지정한 자격증명이 우선하며 `.env`는 Git에서 제외합니다.
+
+모델·포트·주소·타임아웃·이미지 크기는 `config/runtime.json`에 있습니다.
+개인 설정은 Git에서 제외하는 `config/runtime.local.json`에 바꿀 키만 적습니다.
+일반 설정의 우선순위는 **셸/CI 환경변수 → 로컬 JSON → 기본 JSON**입니다.
+설정 파일 변경 후 서버를 재시작하세요. 미지원 키와 잘못된 형식은 시작 시 거부합니다.
+
+```json
+{
+  "GEMINI_MODEL": "gemini-2.5-flash",
+  "PORT": 3000,
+  "OLLAMA_TIMEOUT_MS": 120000
+}
+```
 
 무료 할당은 하루 10,000 Neurons이고, 기본 모델 `@cf/meta/llama-3.3-70b-instruct-fp8-fast` 기준으로 턴당 약 200 Neurons — **하루 약 50턴**입니다. 남은 양은 화면 오른쪽 위에 표시됩니다.
 
@@ -58,7 +72,7 @@ CF_API_TOKEN=<Workers AI 토큰>
 계산되고, 게이트웨이에 선불 크레딧이 없으면 매 호출이 402로 떨어집니다. 그래도
 **턴은 성공한 채 끝나고** 배경만 직전 것이 유지됩니다(응답의 `scene_unavailable`이
 `true`가 됩니다). 자격증명은 `CF_ACCOUNT_ID`/`CF_API_TOKEN`을 그대로 쓰며 새 키는
-필요 없습니다. 선택 설정은 `.env.example`의 `CF_GATEWAY_ID`·`SCENE_CONFIDENCE`를
+필요 없습니다. 선택 설정은 `config/runtime.json`의 `CF_GATEWAY_ID`·`SCENE_CONFIDENCE`를
 보세요.
 
 장소를 세계관에 안 적으면 그 장소는 영영 안 그려집니다. 신뢰도가 모자라 장면을
@@ -74,7 +88,6 @@ CF_API_TOKEN=<Workers AI 토큰>
 ```
 # .env
 GEMINI_API_KEY=<AI Studio 키>
-GEMINI_MODEL=            # 비우면 gemini-2.5-flash
 ```
 
 두 무료 할당은 재는 단위가 다릅니다 — Cloudflare는 **토큰량**(하루 10,000
@@ -90,14 +103,8 @@ Neurons), Gemini는 **요청 수**(RPD/RPM)입니다. 그래서 토큰 예산을
 - **서술만** 폴백합니다. 장면 배경 이미지는 Cloudflare 전용이고, 실패해도 턴은 성공한 채 끝납니다.
 - 서술이 이미 화면에 흐르기 시작한 뒤에는 폴백하지 않습니다. 이미 나간 글자는 되돌릴 수 없으므로, 겹쳐 쓰는 대신 거기서 끊고 `truncated`로 알립니다.
 
-분석기의 기본 Ollama 주소는 `http://127.0.0.1:11434`, 기본 모델은 `qwen3.5:4b`입니다. `PORT`, `OLLAMA_URL`, `OLLAMA_TIMEOUT_MS`도 같은 `.env`에 선택적으로 채울 수 있습니다(기본값은 `.env.example`에 적혀 있습니다).
-
-```
-# .env
-PORT=3000
-OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_TIMEOUT_MS=120000
-```
+분석기의 기본 Ollama 주소는 `http://127.0.0.1:11434`, 기본 모델은 `qwen3.5:4b`입니다.
+`PORT`, `OLLAMA_URL`, `OLLAMA_TIMEOUT_MS`는 일반 JSON 설정에서 변경합니다.
 
 분석 캐시는 `cache/`에 저장됩니다. `NOVEL_IF_CACHE=0`으로 끄거나 `NOVEL_IF_CACHE_DIR`로 위치를 바꿀 수 있습니다.
 
@@ -200,14 +207,20 @@ MCP 서버는 `mcp/server.js`입니다. `NOVEL_IF_LIBRARY`를 지정하지 않�
 ## 구조
 
 ```text
-server.js                 Express 서버와 API (두 앱 공용)
+server.js                 Express 서버 시작·라우트 등록
+config/runtime.json       일반 실행 설정 기본값
+src/server/routes/        pages, analysis, worlds, play HTTP 경로
+src/server/clients.js      LLM 클라이언트 구성·프로세스 장부
+src/server/settings.js     일반 설정 검증·우선순위
 src/llm/                  모델 어댑터 — Workers AI 클라이언트, Neuron 계량 (CommonJS)
-play.html                 플레이 화면
+play.html                 플레이 마크업
+src/app/play/             플레이 동작·상태 표시·스타일
 library.html              세계관·캐릭터 검수·이야기 보관함
 src/app/library.js        서재 화면과 카드 검수
 src/app/play-store.js     브라우저 세션 보관과 내려받기
 data/worlds/              세계관·캐릭터 카드
-src/analyzer.js           규칙 분석과 Ollama 결과 병합
+src/analyzer.js           공개 분석 진입점
+src/analysis/             규칙 추출·Ollama 병합의 기능별 구현
 src/core/                 카드, 세션·턴, 서술/선택지 분리, 프롬프트 조립,
                           as-of, 조합 질의, 요약, 감사, 근거, EPUB, 분기, 출력
 src/server/               턴 오케스트레이터, Ollama 장면 파이프라인, what-if 생성, 위키문헌

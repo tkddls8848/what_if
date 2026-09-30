@@ -1,0 +1,285 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0a;
+  --bg-accent: #14110e;
+  --surface: #11100e;
+  --surface-2: #171513;
+  --surface-3: #1d1a17;
+  --surface-4: #23201c;
+  --ink: #f2eee8;
+  --muted: #aaa19a;
+  --muted-2: #746b62;
+  --line: rgba(242, 238, 232, 0.08);
+  --line-strong: rgba(242, 238, 232, 0.16);
+  --accent: #c46a32;
+  --accent-strong: #e0783a;
+  --accent-2: #7cc7bd;
+  --accent-2-strong: #9adbd3;
+  --danger: #f07167;
+  --warning: #d9a15d;
+  --ok: #9fcf9f;
+  --event: #b8a38f;
+  --ring: rgba(196, 106, 50, 0.34);
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+  --shadow: 0 24px 52px rgba(0, 0, 0, 0.34);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.32), 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background-clip: padding-box;
+  background-color: var(--line-strong);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-2);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+button {
+  min-height: 36px;
+  padding: 0 14px;
+  font-weight: 560;
+  color: var(--ink);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 80ms ease, color 140ms ease;
+}
+
+button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+button.primary {
+  border-color: transparent;
+  color: var(--bg);
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+button.primary:hover {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  filter: brightness(1.06);
+  box-shadow: 0 8px 22px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+button.is-loading {
+  color: var(--accent);
+  background:
+    linear-gradient(90deg, var(--muted-2) 0%, var(--muted) 38%, var(--accent) 50%, var(--muted) 62%, var(--muted-2) 100%),
+    var(--surface-2);
+  background-repeat: repeat-x;
+  background-size: 200% 100%;
+  -webkit-background-clip: text, border-box;
+  background-clip: text, border-box;
+  -webkit-text-fill-color: transparent;
+  animation: loadingShimmer 1.8s linear infinite;
+}
+
+@keyframes loadingShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.is-loading {
+    animation: none;
+    -webkit-text-fill-color: var(--accent);
+  }
+}
+
+textarea,
+input,
+select {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.app-shell {
+  width: min(100%, 1460px);
+  min-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  margin: max(16px, env(safe-area-inset-top, 0px)) auto max(16px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.topbar {
+  position: relative;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.brand h1,
+.pane-header h2,
+.inspector h2,
+.review-layout h2 {
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.brand h1 {
+  font-size: 21px;
+  line-height: 1.15;
+  font-weight: 780;
+  background: linear-gradient(120deg, var(--accent-2-strong), var(--accent-strong));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.route-nav {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.route-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.route-nav a:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.route-nav a.active {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.sample-picker,
+.analyzer-picker,
+.model-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sample-picker select,
+.analyzer-picker select,
+.model-picker select {
+  min-width: 150px;
+  height: 28px;
+  border-color: transparent;
+  background: var(--surface-2);
+}
+
+.analyzer-picker select {
+  min-width: 96px;
+}
+
+.model-picker select {
+  min-width: 128px;
+}
+
+.topbar-actions button:disabled,
+.topbar-actions select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

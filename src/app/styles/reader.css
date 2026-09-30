@@ -1,0 +1,462 @@
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(620px, 1.4fr);
+  gap: 16px;
+  padding: 16px;
+  min-height: 0;
+}
+
+.check-workspace {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  min-height: calc(100dvh - 126px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  padding: 16px;
+  background: var(--surface-2);
+}
+
+.check-header,
+.check-toolbar {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.check-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+}
+
+.check-header p {
+  margin: 0 0 4px;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.check-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.check-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.check-summary .audit-count.error strong {
+  color: var(--danger);
+}
+
+.check-summary .audit-count.warn strong {
+  color: var(--warning);
+}
+
+.check-summary div {
+  display: grid;
+  gap: 3px;
+  min-width: 72px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.check-summary strong {
+  font-size: 18px;
+}
+
+.check-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.check-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-toolbar select {
+  min-height: 34px;
+  padding: 0 28px 0 10px;
+  background-color: var(--surface-2);
+}
+
+.reader-pane,
+.analysis-pane,
+.graph-frame,
+.inspector,
+.source-review,
+.review-queue {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.reader-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 126px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+.analysis-pane {
+  min-height: calc(100dvh - 126px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pane-header.compact {
+  padding: 11px 12px;
+}
+
+.pane-header h2,
+.inspector h2 {
+  font-size: 15px;
+  font-weight: 720;
+}
+
+.pane-header span,
+.toggle-row {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+#sourceText {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  padding: 18px;
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  outline: 0;
+  line-height: 1.7;
+  background: var(--surface);
+}
+
+#sourceText:focus-visible {
+  box-shadow: none;
+}
+
+#sourceText::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.reader-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+.reader-controls label,
+.reader-controls output {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 읽은 데까지의 요약. Reader 안에 접어 두고, 펼치면 그 시점의 집계를 한 번에 본다. */
+.recap-panel {
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.recap-panel > summary {
+  padding: 9px 12px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.86rem;
+  user-select: none;
+}
+
+.recap-panel > summary:hover {
+  color: var(--ink);
+}
+
+.recap-panel > div {
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.recap-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.recap-types,
+.recap-characters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recap-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recap-types li {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.recap-types b {
+  color: var(--ink);
+}
+
+.recap-characters {
+  display: grid;
+  gap: 6px;
+}
+
+.recap-characters li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 9px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-3);
+  font-size: 0.82rem;
+}
+
+.recap-meta {
+  color: var(--muted-2);
+  font-size: 0.75rem;
+}
+
+.recap-state {
+  color: var(--accent-2);
+  font-size: 0.78rem;
+}
+
+.recap-note {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.72rem;
+}
+
+.segment-list {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+.active-segment-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.active-segment-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.active-segment-card h3 {
+  margin: 3px 0 0;
+  font-size: 16px;
+}
+
+.active-segment-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.active-segment-actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.active-segment-text {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.active-segment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segment-index {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 시대 주석 — 링크만 보여 준다. 설명 서술은 이 앱이 만들지 않는다. */
+.annotation-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.annotation-block h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.annotation-hint {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--muted-2);
+}
+
+.annotation-block ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.annotation-block li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.annotation-term {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.annotation-category {
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.annotation-links a {
+  color: var(--accent-2);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(124, 199, 189, 0.35);
+}
+
+.annotation-links a:hover {
+  color: var(--accent-2-strong);
+}
+
+.annotation-note {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.tab {
+  min-width: 92px;
+  min-height: 34px;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 620;
+}
+
+.tab:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.tab.active {
+  border-color: transparent;
+  color: var(--accent-2-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tab.active {
+    color: var(--ink);
+  }
+}

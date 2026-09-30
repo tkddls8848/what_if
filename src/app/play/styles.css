@@ -1,0 +1,138 @@
+  :root {
+    color-scheme: light dark;
+    --bg: #faf9f6;
+    --fg: #1c1c1a;
+    --muted: #6b6b66;
+    --border: rgba(0, 0, 0, 0.14);
+    --panel: #f0efe8;
+    --accent-affection: #6d5aa8;
+    --accent-recovery: #3f8f6f;
+    --accent-note: #a97142;
+    --error: #c0392b;
+    --focus: #4b5c9e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15161a;
+      --fg: #e9e7e2;
+      --muted: #a3a39c;
+      --border: rgba(255, 255, 255, 0.16);
+      --panel: #1e2024;
+      --accent-affection: #b6a4e0;
+      --accent-recovery: #7fcfae;
+      --accent-note: #d6a06b;
+      --error: #e5776b;
+      --focus: #9fb0ff;
+    }
+  }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.9 system-ui, "Malgun Gothic", sans-serif; }
+
+  /* 2단 레이아웃 — 왼쪽은 sticky 장면 패널, 오른쪽은 지금까지와 같은 읽기 칸(main). 좁은
+     화면에서는 세로로 쌓되(장면 패널이 위) 패널 높이를 제한해 본문을 화면 아래로 밀어내지
+     않는다. */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 300px) minmax(0, 42rem);
+    justify-content: center;
+    align-items: start;
+    gap: 1.5rem;
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 1.25rem 1.25rem 6rem;
+  }
+  main { max-width: none; margin: 0; padding: 0; min-width: 0; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; padding: 1rem 1rem 6rem; gap: 1rem; }
+  }
+  header.world { margin: 0 0 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+  .worldRow { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+  .worldRow h1 { font-size: 1.15rem; margin: 0; font-weight: 600; }
+  #worldNameStatic { font-size: 0.85rem; opacity: 0.6; }
+  #worldPicker { font: inherit; font-size: 0.85rem; padding: 0.15rem 0.4rem; background: var(--bg); color: var(--fg); }
+  .setting { margin: 0.35rem 0 0; font-size: 0.85rem; line-height: 1.55; opacity: 0.65; }
+  details.cast { margin-top: 0.5rem; font-size: 0.85rem; }
+  details.cast summary { cursor: pointer; opacity: 0.7; user-select: none; }
+  .castList { display: grid; gap: 0.6rem; margin-top: 0.6rem; }
+  .castCard { padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: 0.375rem; }
+  .castCard strong { display: block; margin-bottom: 0.2rem; }
+  .castCard p { margin: 0.1rem 0; opacity: 0.75; }
+
+  /* 게이지: 숫자를 절대 보여주지 않는다 — 단계/문구와 채워지는 정도만 보여준다. */
+  .gauges { display: grid; gap: 0.7rem; margin: 0 0 1rem; }
+  .gauge { }
+  .gaugeHead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+  .gaugeName { font-weight: 600; opacity: 0.85; }
+  .gaugeState { opacity: 0.7; }
+  .bar { height: 0.45rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); overflow: hidden; }
+  .fill { height: 100%; width: 0%; border-radius: 999px; transition: width 0.6s ease; }
+  #affectionFill { background: var(--accent-affection); }
+  #recoveryFill { background: var(--accent-recovery); }
+  .triggerNote {
+    min-height: 1.1em; margin: 0.3rem 0 0; font-size: 0.78rem; opacity: 0;
+    transform: translateY(-2px); transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .triggerNote.show { opacity: 0.85; transform: translateY(0); }
+  .oppositeNote {
+    margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--accent-note);
+    background: color-mix(in srgb, var(--accent-note) 14%, transparent);
+    border-radius: 0.25rem; font-size: 0.82rem; line-height: 1.6;
+  }
+  .notice {
+    margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--muted);
+    background: var(--panel); border-radius: 0.25rem; font-size: 0.8rem; opacity: 0.85; line-height: 1.6;
+  }
+
+  /* 배경 장면 패널 — 왼쪽 칸에서 sticky로 항상 보인다("이미지를 채팅창에 두니까 조금만
+     대화해도 보기 어렵다"는 신고에 대한 답). 이미지가 없을 때(새 세션, 장면이 안 바뀜,
+     생성 실패)도 빈 구멍처럼 보이지 않도록 장소·시간·날씨 텍스트를 항상 채워 둔다. */
+  .scenePanel {
+    position: sticky; top: 1.25rem;
+    display: block; width: 100%; aspect-ratio: 3 / 4; margin: 0;
+    border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--border);
+    background: linear-gradient(135deg, color-mix(in srgb, currentColor 5%, transparent), color-mix(in srgb, currentColor 11%, transparent));
+  }
+  .scenePanel img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity 0.9s ease; z-index: 1;
+  }
+  .scenePanel img.loaded { opacity: 1; }
+  .scenePlaceholderText {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 1rem; font-size: 0.85rem; line-height: 1.7; opacity: 0.6;
+  }
+  @media (max-width: 760px) {
+    .scenePanel { position: sticky; top: 0; z-index: 5; aspect-ratio: auto; height: 30vh; }
+  }
+
+  .scene { white-space: pre-wrap; margin: 0 0 2rem; }
+  .scene.pending { opacity: 0.75; }
+  .you { opacity: 0.6; font-style: italic; margin: 0 0 1rem; }
+  .choices { display: grid; gap: 0.5rem; margin: 0 0 1.5rem; }
+  .choices button { text-align: left; padding: 0.6rem 0.85rem; font: inherit; cursor: pointer;
+    border: 1px solid currentColor; border-radius: 0.375rem; background: transparent; color: inherit; }
+  .controls { display: flex; justify-content: flex-end; margin: 0 0 0.5rem; }
+  #stopBtn { font: inherit; font-size: 0.78rem; opacity: 0.55; background: none; border: none;
+    cursor: pointer; padding: 0.2rem 0.3rem; color: inherit; text-decoration: underline; }
+  #stopBtn:hover { opacity: 0.85; }
+  form { display: flex; gap: 0.5rem; }
+  input { flex: 1; padding: 0.6rem; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 0.25rem; }
+  button[type=submit] { padding: 0.6rem 1rem; font: inherit; cursor: pointer; }
+
+  /* 결말 화면 — 실패 화면이 아니라 조용한 결과 관찰이다. */
+  .ending { margin: 1rem 0 2rem; padding: 1.1rem 1.25rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--panel); }
+  .ending h2 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+  .ending p { margin: 0 0 1.1rem; opacity: 0.85; line-height: 1.75; }
+  .ending button { font: inherit; padding: 0.55rem 0.9rem; cursor: pointer; border: 1px solid currentColor; border-radius: 0.375rem; background: transparent; color: inherit; }
+
+  .meter { margin: 0 1.25rem .5rem; font-size: 0.75rem; opacity: 0.65;
+    text-align: right; }
+  nav a { color:inherit; text-decoration:none; }
+  nav a[aria-current] { font-weight:700; }
+  button:disabled { opacity:.5; cursor:wait; }
+  main > details { margin-bottom:1rem; }
+  input { min-width:0; }
+  .cut { opacity: 0.6; font-size: 0.85em; margin: -1rem 0 1.5rem; }
+  .error { color: var(--error); }

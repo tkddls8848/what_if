@@ -36,8 +36,9 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { loadEnvFile } = require(path.join(ROOT, "src/server/env.js"));
 loadEnvFile(path.join(ROOT, ".env"));
 
-const { createJevClient } = require(path.join(ROOT, "src/llm/jev.js"));
-const { directScene, DEFAULT_CONFIDENCE_THRESHOLD } = require(path.join(ROOT, "src/server/director.js"));
+const { getDirectorClient } = require(path.join(ROOT, "src/server/clients.js"));
+const { getSettings } = require(path.join(ROOT, "src/server/settings.js"));
+const { directScene } = require(path.join(ROOT, "src/server/director.js"));
 const { sceneHash } = require(path.join(ROOT, "src/server/scene.js"));
 // Windows 절대 경로는 ESM import에 그대로 못 넣는다("c:" 를 프로토콜로 읽는다) —
 // file:// URL로 바꿔서 넘긴다. src/core/는 ESM이라 require로는 못 읽는다.
@@ -51,7 +52,7 @@ function arg(name, fallback = null) {
 }
 
 const goldenPath = arg("golden", "tests/fixtures/golden/scene_director.golden.json");
-const threshold = Number(arg("threshold", DEFAULT_CONFIDENCE_THRESHOLD));
+const threshold = Number(arg("threshold", getSettings().SCENE_CONFIDENCE));
 const outPath = arg("out");
 const dryRun = Boolean(arg("dry", false));
 
@@ -107,14 +108,7 @@ if (dryRun) {
   process.exit(0);
 }
 
-const client = createJevClient({
-  accountId: process.env.CF_ACCOUNT_ID,
-  apiToken: process.env.CF_API_TOKEN,
-  apiBase: process.env.CF_API_BASE,
-  gatewayId: process.env.CF_GATEWAY_ID,
-  aigToken: process.env.CF_AIG_TOKEN,
-  timeoutMs: Number(process.env.JEV_TIMEOUT_MS) || 30000
-});
+const client = getDirectorClient();
 
 if (!client.isConfigured()) {
   console.error("CF_ACCOUNT_ID와 CF_API_TOKEN이 필요하다 (.env 참고).");

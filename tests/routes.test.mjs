@@ -14,6 +14,18 @@ function listen() {
   });
 }
 
+test("서버·설정·원자료 파일은 정적으로 노출하지 않고 브라우저 자산만 제공한다", async () => {
+  const { server, port } = await listen();
+  try {
+    for (const path of ["/.env", "/server.js", "/config/runtime.json", "/config/runtime.local.json", "/src/server/env.js", "/src/llm/cloudflare.js", "/data/worlds/demo.json", "/.git/config", "/package.json"]) {
+      assert.equal((await fetch(`http://127.0.0.1:${port}${path}`)).status, 404, path);
+    }
+    for (const path of ["/src/app/play/controller.js", "/src/app/play/status-view.js", "/src/app/play/styles.css", "/src/analyzer.js", "/src/analysis/payload.js", "/src/app/styles/reader.css"]) {
+      assert.equal((await fetch(`http://127.0.0.1:${port}${path}`)).status, 200, path);
+    }
+  } finally { server.close(); }
+});
+
 test("GET /: 플레이를 기본 화면으로 제공한다", async () => {
   const { server, port } = await listen();
   try {

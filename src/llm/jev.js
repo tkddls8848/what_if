@@ -110,7 +110,7 @@ function mapStatus(status, body, viaGateway = false) {
     if (viaGateway) {
       return errorResult(
         "AUTH_FAILED",
-        "AI Gateway가 요청을 거부했습니다. CF_GATEWAY_ID가 실제로 존재하는 게이트웨이 이름인지, 인증 게이트웨이라면 CF_AIG_TOKEN이 맞는지 확인하세요.",
+        "AI Gateway가 요청을 거부했습니다. CF_GATEWAY_ID가 실제로 존재하는 게이트웨이 이름인지, 인증 게이트웨이라면 CF_AI_GATEWAY_TOKEN이 맞는지 확인하세요.",
         false
       );
     }

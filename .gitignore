@@ -8,6 +8,7 @@ dist/
 data/scenes/
 .env
 .env.*.local
+config/runtime.local.json
 *.log
 npm-debug.log*
 .DS_Store

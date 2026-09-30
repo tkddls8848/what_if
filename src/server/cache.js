@@ -3,15 +3,16 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { ROOT, getSettings } = require("./settings");
 
 const DEFAULT_DIR = path.join(__dirname, "..", "..", "cache");
 
 function cacheEnabled() {
-  return process.env.NOVEL_IF_CACHE !== "0";
+  return getSettings().NOVEL_IF_CACHE;
 }
 
 function defaultDir() {
-  return process.env.NOVEL_IF_CACHE_DIR || DEFAULT_DIR;
+  return path.resolve(ROOT, getSettings().NOVEL_IF_CACHE_DIR);
 }
 
 function makeKey({ text, model, promptVersion }) {
